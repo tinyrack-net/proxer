@@ -266,16 +266,16 @@ export async function performPkgSmoke(options: {
     NODE_OPTIONS: "",
     NO_COLOR: "1",
   };
-  const result = captureCommand(executablePath, [], {
+  const result = captureCommand(executablePath, ["--help"], {
     cwd: options.repoRoot,
     env: smokeEnvironment,
   });
 
-  assertCommandSucceeded("pkg smoke", result);
-  assertIncludes("pkg smoke stdout", result.stdout, "COMMANDS");
-  assertIncludes("pkg smoke stdout", result.stdout, "server");
-  assertIncludes("pkg smoke stdout", result.stdout, "http");
-  assertEmpty("pkg smoke stderr", result.stderr);
+  assertCommandSucceeded("pkg help smoke", result);
+  assertIncludes("pkg help smoke stdout", result.stdout, "COMMANDS");
+  assertIncludes("pkg help smoke stdout", result.stdout, "server");
+  assertIncludes("pkg help smoke stdout", result.stdout, "http");
+  assertEmpty("pkg help smoke stderr", result.stderr);
 
   const versionResult = captureCommand(executablePath, ["--version"], {
     cwd: options.repoRoot,

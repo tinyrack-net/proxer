@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockSpawnSync = vi.hoisted(() => vi.fn());
 
@@ -11,7 +14,18 @@ import {
   createPkgConfig,
   getPkgPaths,
   isNodeBuiltinSpecifier,
+  performPkgSmoke,
 } from "./pkg.ts";
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+
+  for (const directory of temporaryDirectories.splice(0)) {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
 
 describe("isNodeBuiltinSpecifier", () => {
   test("returns true for node: prefixed builtins", () => {
@@ -135,5 +149,52 @@ describe("createPkgConfig", () => {
       },
       compress: "GZip",
     });
+  });
+});
+
+describe("performPkgSmoke", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("checks CLI help commands and version output", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "proxer-pkg-smoke-"));
+    temporaryDirectories.push(repoRoot);
+    await mkdir(join(repoRoot, "packages", "cli"), { recursive: true });
+    await writeFile(
+      join(repoRoot, "packages", "cli", "package.json"),
+      JSON.stringify({ version: "1.2.3" }),
+    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    mockSpawnSync
+      .mockReturnValueOnce({
+        error: undefined,
+        signal: null,
+        stderr: "",
+        status: 0,
+        stdout: "COMMANDS\n  server\n  http\n",
+      })
+      .mockReturnValueOnce({
+        error: undefined,
+        signal: null,
+        stderr: "",
+        status: 0,
+        stdout: "proxer 1.2.3\n",
+      });
+
+    await performPkgSmoke({ repoRoot, skipBuild: true });
+
+    expect(mockSpawnSync).toHaveBeenNthCalledWith(
+      1,
+      join(repoRoot, "packages", "cli", "dist", "pkg", "proxer"),
+      ["--help"],
+      expect.objectContaining({ cwd: repoRoot }),
+    );
+    expect(mockSpawnSync).toHaveBeenNthCalledWith(
+      2,
+      join(repoRoot, "packages", "cli", "dist", "pkg", "proxer"),
+      ["--version"],
+      expect.objectContaining({ cwd: repoRoot }),
+    );
   });
 });
