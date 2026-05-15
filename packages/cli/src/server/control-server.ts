@@ -1,0 +1,124 @@
+import http from "node:http";
+import { WebSocketServer } from "ws";
+import { formatHostPort, type HostPort } from "#app/lib/address.ts";
+import { ProxerError } from "#app/lib/error.ts";
+import type { RegisterFrame } from "#app/protocol/frame.ts";
+import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
+import type { TunnelRegistry } from "#app/server/stream-registry.ts";
+
+export type ControlServerOptions = {
+  readonly address: HostPort;
+  readonly registry: TunnelRegistry;
+  readonly token?: string;
+};
+
+export type ControlServerHandle = {
+  readonly url: string;
+  close(): Promise<void>;
+};
+
+const listen = async (
+  server: http.Server,
+  address: HostPort,
+): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(address.port, address.host, () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+};
+
+const getListeningAddress = (server: http.Server): HostPort => {
+  const address = server.address();
+  if (typeof address !== "object" || address === null) {
+    throw new ProxerError("Control server did not bind to a TCP address");
+  }
+
+  return {
+    host: address.address,
+    port: address.port,
+  };
+};
+
+const isRegisterFrame = (frame: {
+  readonly type: string;
+}): frame is RegisterFrame => {
+  return frame.type === "register";
+};
+
+export const startControlServer = async ({
+  address,
+  registry,
+  token,
+}: ControlServerOptions): Promise<ControlServerHandle> => {
+  const server = http.createServer();
+  const webSocketServer = new WebSocketServer({ server });
+
+  webSocketServer.on("connection", (socket) => {
+    const connection = createWebSocketTunnelConnection(socket);
+    let registeredName: string | undefined;
+
+    connection.onFrame((frame) => {
+      if (registeredName) {
+        return;
+      }
+
+      if (!isRegisterFrame(frame)) {
+        void connection.close(1002, "Expected register frame");
+        return;
+      }
+
+      if (token !== undefined && frame.token !== token) {
+        void connection.close(1008, "Invalid tunnel token");
+        return;
+      }
+
+      try {
+        registry.register({ name: frame.name, connection });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        void connection
+          .send({ type: "error", streamId: "registration", message })
+          .finally(() => connection.close(1008, message));
+        return;
+      }
+
+      registeredName = frame.name;
+      void connection.send({ type: "registered", name: frame.name });
+    });
+
+    connection.onClose(() => {
+      if (registeredName) {
+        registry.unregister(registeredName, connection);
+      }
+    });
+  });
+
+  await listen(server, address);
+  const listeningAddress = getListeningAddress(server);
+
+  return {
+    url: `ws://${formatHostPort(listeningAddress)}`,
+    async close() {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((webSocketError) => {
+          if (webSocketError) {
+            reject(webSocketError);
+            return;
+          }
+
+          server.close((serverError) => {
+            if (serverError) {
+              reject(serverError);
+              return;
+            }
+
+            resolve();
+          });
+        });
+      });
+    },
+  };
+};
