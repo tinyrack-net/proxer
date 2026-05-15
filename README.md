@@ -71,6 +71,18 @@ docker run --rm --network host tinyrack/proxer http 3000 --server ws://127.0.0.1
 
 On macOS and Windows Docker Desktop, use `host.docker.internal` instead of `127.0.0.1` when the container needs to reach a local service on the host.
 
+### Installing the Proxer agent skill
+
+Proxer can install a small markdown skill file for AI agents:
+
+```bash
+proxer skill install ~/.hermes/skills/proxer
+proxer skill install ~/.hermes/skills/proxer --dry-run
+proxer skill install ~/.hermes/skills/proxer --force
+```
+
+The command writes `<directory>/proxer.md` and has no network side effects.
+
 Kubernetes liveness and readiness probes can use the built-in single-port health endpoints. These endpoints do not require a tunnel or token:
 
 ```yaml

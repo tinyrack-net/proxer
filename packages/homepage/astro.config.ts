@@ -16,7 +16,7 @@ export default defineConfig({
     "/": "/en/",
   },
   server: {
-    port: 5432,
+    port: 5482,
     host: "0.0.0.0",
     allowedHosts: true,
   },

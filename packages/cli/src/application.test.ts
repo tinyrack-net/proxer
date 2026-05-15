@@ -1,5 +1,8 @@
 import { EventEmitter } from "node:events";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
 import {
@@ -92,6 +95,23 @@ const getUnusedPort = async (): Promise<number> => {
   return address.port;
 };
 
+const createTempDirectory = async (): Promise<string> => {
+  return await mkdtemp(path.join(tmpdir(), "proxer-cli-"));
+};
+
+const pathExists = async (targetPath: string): Promise<boolean> => {
+  try {
+    await stat(targetPath);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+
+    throw error;
+  }
+};
+
 describe("proxer CLI", () => {
   it("builds the application", () => {
     expect(buildProxerApplication()).toBeDefined();
@@ -103,6 +123,28 @@ describe("proxer CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("server");
     expect(result.stdout).toContain("http");
+    expect(result.stdout).toContain("skill");
+    expect(result.stderr).toBe("");
+  });
+
+  it("skill help lists install", async () => {
+    const result = await runWithCapturedOutput(["skill", "--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("install");
+    expect(result.stderr).toBe("");
+  });
+
+  it("skill install help lists only skill installer options", async () => {
+    const result = await runWithCapturedOutput(["skill", "install", "--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("<directory>");
+    expect(result.stdout).toContain("--dry-run");
+    expect(result.stdout).toContain("--force");
+    expect(result.stdout).not.toContain("--server");
+    expect(result.stdout).not.toContain("--token");
+    expect(result.stdout).not.toContain("--control-path");
     expect(result.stderr).toBe("");
   });
 
@@ -149,5 +191,80 @@ describe("proxer CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).not.toContain("--control-path");
     expect(result.stderr).toBe("");
+  });
+
+  it("skill install writes proxer.md and prints installed path", async () => {
+    const directory = path.join(await createTempDirectory(), "skills");
+    const targetPath = path.resolve(directory, "proxer.md");
+
+    const result = await runWithCapturedOutput(["skill", "install", directory]);
+    const content = await readFile(targetPath, "utf8");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`installed skill: ${targetPath}`);
+    expect(result.stderr).toBe("");
+    expect(content).toContain("proxer skill");
+    expect(content).toContain("/__proxer__/control");
+  });
+
+  it("skill install --dry-run prints would install and writes nothing", async () => {
+    const directory = path.join(
+      await createTempDirectory(),
+      "nested",
+      "skills",
+    );
+    const targetPath = path.resolve(directory, "proxer.md");
+
+    const result = await runWithCapturedOutput([
+      "skill",
+      "install",
+      directory,
+      "--dry-run",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(`would install skill: ${targetPath}`);
+    expect(result.stderr).toBe("");
+    expect(await pathExists(directory)).toBe(false);
+    expect(await pathExists(targetPath)).toBe(false);
+  });
+
+  it("skill install refuses existing file without --force", async () => {
+    const directory = await createTempDirectory();
+    const targetPath = path.join(directory, "proxer.md");
+    await writeFile(targetPath, "existing skill\n", "utf8");
+
+    const result = await runWithCapturedOutput(["skill", "install", directory]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain(
+      `skill already exists: ${path.resolve(targetPath)} (use --force to overwrite)`,
+    );
+    await expect(readFile(targetPath, "utf8")).resolves.toBe(
+      "existing skill\n",
+    );
+  });
+
+  it("skill install --force overwrites existing file", async () => {
+    const directory = await createTempDirectory();
+    const targetPath = path.join(directory, "proxer.md");
+    await writeFile(targetPath, "stale skill\n", "utf8");
+
+    const result = await runWithCapturedOutput([
+      "skill",
+      "install",
+      directory,
+      "--force",
+    ]);
+    const content = await readFile(targetPath, "utf8");
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      `installed skill: ${path.resolve(targetPath)}`,
+    );
+    expect(result.stderr).toBe("");
+    expect(content).not.toBe("stale skill\n");
+    expect(content).toContain("proxer skill");
   });
 });
