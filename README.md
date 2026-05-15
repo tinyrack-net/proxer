@@ -72,6 +72,19 @@ docker run --rm --network host tinyrack/proxer http 3000 --server ws://127.0.0.1
 
 On macOS and Windows Docker Desktop, use `host.docker.internal` instead of `127.0.0.1` when the container needs to reach a local service on the host.
 
+Kubernetes liveness and readiness probes can use the built-in single-port health endpoints. These endpoints do not require a tunnel or token:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /__proxer/health/live
+    port: 8080
+readinessProbe:
+  httpGet:
+    path: /__proxer/health/ready
+    port: 8080
+```
+
 ## Quick Start
 
 Start the public Proxer server:

@@ -4,6 +4,7 @@ import { formatHostPort, type HostPort } from "#app/lib/address.ts";
 import { normalizeControlPath } from "#app/lib/control-path.ts";
 import { ProxerError } from "#app/lib/error.ts";
 import { createControlWebSocketServer } from "#app/server/control-server.ts";
+import { handleHealthProbeRequest } from "#app/server/health-probes.ts";
 import {
   DEFAULT_STREAM_TIMEOUT_MS,
   getPublicListeningAddress,
@@ -57,7 +58,13 @@ export const startSinglePortServer = async ({
     token,
   });
   const server = http.createServer((request, response) => {
-    if (pathnameOf(request.url) === controlPath) {
+    const pathname = pathnameOf(request.url);
+
+    if (handleHealthProbeRequest({ pathname, request, response })) {
+      return;
+    }
+
+    if (pathname === controlPath) {
       response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       response.end("Control endpoint requires WebSocket upgrade\n");
       return;
