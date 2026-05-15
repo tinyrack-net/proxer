@@ -272,17 +272,23 @@ export async function performPkgSmoke(options: {
   });
 
   assertCommandSucceeded("pkg smoke", result);
+  assertIncludes("pkg smoke stdout", result.stdout, "COMMANDS");
+  assertIncludes("pkg smoke stdout", result.stdout, "server");
+  assertIncludes("pkg smoke stdout", result.stdout, "http");
+  assertEmpty("pkg smoke stderr", result.stderr);
+
+  const versionResult = captureCommand(executablePath, ["--version"], {
+    cwd: options.repoRoot,
+    env: smokeEnvironment,
+  });
+
+  assertCommandSucceeded("pkg version smoke", versionResult);
   assertIncludes(
-    "pkg smoke stdout",
-    result.stdout,
+    "pkg version smoke stdout",
+    versionResult.stdout,
     `proxer ${cliPackageJson.version}`,
   );
-  assertIncludes(
-    "pkg smoke stdout",
-    result.stdout,
-    "Reverse-tunnel commands are not implemented yet.",
-  );
-  assertEmpty("pkg smoke stderr", result.stderr);
+  assertEmpty("pkg version smoke stderr", versionResult.stderr);
 
   console.log(`pkg smoke test passed with ${executablePath}`);
 }

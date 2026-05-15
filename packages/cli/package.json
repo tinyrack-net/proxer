@@ -72,5 +72,8 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
     "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "@stricli/core": "^1.2.7"
   }
 }
