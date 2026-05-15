@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockExecFile = vi.hoisted(() => vi.fn());
@@ -63,6 +66,28 @@ describe("git", () => {
       const result = await getRepoRoot("/some/cwd");
 
       expect(result).toBe("/repo/root");
+    });
+
+    test("falls back to workspace root detection when git is unavailable", async () => {
+      const repoRoot = await mkdtemp(join(tmpdir(), "proxer-git-root-"));
+
+      try {
+        await mkdir(join(repoRoot, "packages", "cli"), { recursive: true });
+        await writeFile(join(repoRoot, "pnpm-workspace.yaml"), "packages:\n");
+        await writeFile(
+          join(repoRoot, "packages", "cli", "package.json"),
+          '{"name":"@tinyrack/proxer"}\n',
+        );
+        mockExecFailure(
+          Object.assign(new Error("spawn git ENOENT"), { stderr: "" }),
+        );
+
+        const result = await getRepoRoot(join(repoRoot, "packages", "cli"));
+
+        expect(result).toBe(repoRoot);
+      } finally {
+        await rm(repoRoot, { force: true, recursive: true });
+      }
     });
   });
 

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { findRepoRoot } from "./workspace.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -8,7 +9,15 @@ type GitCommandOptions = {
 };
 
 export async function getRepoRoot(cwd: string): Promise<string> {
-  return await runGit(["rev-parse", "--show-toplevel"], { cwd });
+  try {
+    return await runGit(["rev-parse", "--show-toplevel"], { cwd });
+  } catch (error) {
+    try {
+      return await findRepoRoot(cwd);
+    } catch {
+      throw error;
+    }
+  }
 }
 
 export async function getWorktreeStatus(repoRoot: string): Promise<string> {

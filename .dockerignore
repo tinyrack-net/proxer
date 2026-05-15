@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.*
+.git
+.github
+.hermes
+.opencode
+.pnpm-store
+coverage
+dist
+node_modules
+packages/*/coverage
+packages/*/dist
+pnpm-debug.log*
