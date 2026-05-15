@@ -1,4 +1,5 @@
 import http from "node:http";
+import type { Duplex } from "node:stream";
 import { formatHostPort, type HostPort } from "#app/lib/address.ts";
 import { ProxerError } from "#app/lib/error.ts";
 import {
@@ -9,6 +10,7 @@ import { createStreamId } from "#app/lib/ids.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
+import { attachWebSocketUpgradeHandler } from "#app/server/websocket-upgrade.ts";
 
 export type PublicHttpServerOptions = {
   readonly address: HostPort;
@@ -204,6 +206,7 @@ export const startPublicHttpServer = async ({
   address,
   registry,
 }: PublicHttpServerOptions): Promise<PublicHttpServerHandle> => {
+  const upgradeSockets = new Set<Duplex>();
   const server = http.createServer((request, response) => {
     const name = getTunnelNameFromHost(request.headers.host);
     const tunnel = registry.get(name);
@@ -218,6 +221,13 @@ export const startPublicHttpServer = async ({
       response,
     });
   });
+  attachWebSocketUpgradeHandler(server, {
+    onSocket(socket) {
+      upgradeSockets.add(socket);
+      socket.once("close", () => upgradeSockets.delete(socket));
+    },
+    registry,
+  });
 
   await listen(server, address);
   const listeningAddress = getListeningAddress(server);
@@ -225,6 +235,9 @@ export const startPublicHttpServer = async ({
   return {
     url: `http://${formatHostPort(listeningAddress)}`,
     async close() {
+      for (const socket of upgradeSockets) {
+        socket.destroy();
+      }
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {

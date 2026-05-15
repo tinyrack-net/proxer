@@ -1,4 +1,5 @@
 import http from "node:http";
+import { WebSocketServer } from "ws";
 import type { HostPort } from "#app/lib/address.ts";
 
 export type LocalSseServerOptions = {
@@ -83,6 +84,47 @@ export const createLocalSseServer = async ({
       }
       timers.clear();
       await closeHttpServer(server);
+    },
+  };
+};
+
+export const createLocalWebSocketEchoServer = async (): Promise<{
+  readonly url: string;
+  readonly port: number;
+  close(): Promise<void>;
+}> => {
+  const server = http.createServer();
+  const webSocketServer = new WebSocketServer({ server });
+
+  webSocketServer.on("connection", (socket) => {
+    socket.on("message", (data, isBinary) => {
+      socket.send(data, { binary: isBinary });
+    });
+  });
+
+  const address = await listenOnRandomPort(server);
+
+  return {
+    url: `ws://${address.host}:${address.port}`,
+    port: address.port,
+    async close() {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((webSocketError) => {
+          if (webSocketError) {
+            reject(webSocketError);
+            return;
+          }
+
+          server.close((serverError) => {
+            if (serverError) {
+              reject(serverError);
+              return;
+            }
+
+            resolve();
+          });
+        });
+      });
     },
   };
 };

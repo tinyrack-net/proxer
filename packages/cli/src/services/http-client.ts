@@ -1,5 +1,6 @@
 import { WebSocket } from "ws";
 import { attachLocalHttpForwarder } from "#app/client/local-http-forwarder.ts";
+import { attachLocalWebSocketForwarder } from "#app/client/local-websocket-forwarder.ts";
 import { ProxerError } from "#app/lib/error.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
 
@@ -78,10 +79,15 @@ export const startHttpTunnelClient = async ({
     connection,
     localPort,
   });
+  const detachLocalWebSocketForwarder = attachLocalWebSocketForwarder({
+    connection,
+    localPort,
+  });
 
   return {
     name,
     async close() {
+      detachLocalWebSocketForwarder();
       detachLocalHttpForwarder();
       if (socket.readyState === WebSocket.CLOSED) {
         return;
