@@ -1,6 +1,6 @@
 {
   "name": "@tinyrack/proxer",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "A reverse-tunnel CLI for Tinyrack.",
   "type": "module",
   "license": "MIT",
