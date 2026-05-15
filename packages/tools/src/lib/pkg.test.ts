@@ -105,18 +105,24 @@ describe("getPkgPaths", () => {
   test("returns default Linux executable and bundle paths", () => {
     const paths = getPkgPaths({ repoRoot: "/repo", platform: "linux" });
 
-    expect(paths.cliDir).toBe("/repo/packages/cli");
-    expect(paths.bundlePath).toBe("/repo/packages/cli/dist/pkg/proxer.mjs");
-    expect(paths.executablePath).toBe("/repo/packages/cli/dist/pkg/proxer");
+    expect(paths.cliDir).toBe(join("/repo", "packages", "cli"));
+    expect(paths.bundlePath).toBe(
+      join("/repo", "packages", "cli", "dist", "pkg", "proxer.mjs"),
+    );
+    expect(paths.executablePath).toBe(
+      join("/repo", "packages", "cli", "dist", "pkg", "proxer"),
+    );
     expect(paths.pkgConfigPath).toBe(
-      "/repo/packages/cli/dist/pkg/pkg.config.mjs",
+      join("/repo", "packages", "cli", "dist", "pkg", "pkg.config.mjs"),
     );
   });
 
   test("returns Windows executable path", () => {
     const paths = getPkgPaths({ repoRoot: "/repo", platform: "win32" });
 
-    expect(paths.executablePath).toBe("/repo/packages/cli/dist/pkg/proxer.exe");
+    expect(paths.executablePath).toBe(
+      join("/repo", "packages", "cli", "dist", "pkg", "proxer.exe"),
+    );
   });
 });
 
@@ -184,15 +190,18 @@ describe("performPkgSmoke", () => {
 
     await performPkgSmoke({ repoRoot, skipBuild: true });
 
+    const defaultExecutableName =
+      process.platform === "win32" ? "proxer.exe" : "proxer";
+
     expect(mockSpawnSync).toHaveBeenNthCalledWith(
       1,
-      join(repoRoot, "packages", "cli", "dist", "pkg", "proxer"),
+      join(repoRoot, "packages", "cli", "dist", "pkg", defaultExecutableName),
       ["--help"],
       expect.objectContaining({ cwd: repoRoot }),
     );
     expect(mockSpawnSync).toHaveBeenNthCalledWith(
       2,
-      join(repoRoot, "packages", "cli", "dist", "pkg", "proxer"),
+      join(repoRoot, "packages", "cli", "dist", "pkg", defaultExecutableName),
       ["--version"],
       expect.objectContaining({ cwd: repoRoot }),
     );
