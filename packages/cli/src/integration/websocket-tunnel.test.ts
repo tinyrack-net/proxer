@@ -67,8 +67,8 @@ describe("WebSocket tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localWebSocketServer.port,
-      name: "demo",
       serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());

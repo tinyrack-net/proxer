@@ -29,10 +29,10 @@ describe("WebSocket tunnel connection", () => {
     const socket = new FakeWebSocket();
     const connection = createWebSocketTunnelConnection(asWebSocket(socket));
 
-    await connection.send({ type: "registered", name: "demo" });
+    await connection.send({ type: "registered", subdomain: "demo" });
 
     expect(socket.sent).toEqual([
-      encodeFrame({ type: "registered", name: "demo" }),
+      encodeFrame({ type: "registered", subdomain: "demo" }),
     ]);
   });
 
@@ -42,9 +42,12 @@ describe("WebSocket tunnel connection", () => {
     const frames: TunnelFrame[] = [];
 
     connection.onFrame((frame) => frames.push(frame));
-    socket.emit("message", encodeFrame({ type: "registered", name: "demo" }));
+    socket.emit(
+      "message",
+      encodeFrame({ type: "registered", subdomain: "demo" }),
+    );
 
-    expect(frames).toEqual([{ type: "registered", name: "demo" }]);
+    expect(frames).toEqual([{ type: "registered", subdomain: "demo" }]);
   });
 
   it("closes with a protocol error code for invalid incoming frames", () => {
@@ -82,7 +85,10 @@ describe("WebSocket tunnel connection", () => {
 
     removeFrameListener();
     removeCloseListener();
-    socket.emit("message", encodeFrame({ type: "registered", name: "demo" }));
+    socket.emit(
+      "message",
+      encodeFrame({ type: "registered", subdomain: "demo" }),
+    );
     socket.emit("error", new Error("boom"));
     socket.emit("close");
 

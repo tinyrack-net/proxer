@@ -106,7 +106,10 @@ const registerClientOnMessage = (data: RawData): string | undefined => {
     return undefined;
   }
 
-  return encodeFrame({ type: "registered", name: frame.name });
+  return encodeFrame({
+    type: "registered",
+    ...(frame.subdomain ? { subdomain: frame.subdomain } : {}),
+  });
 };
 
 describe("HTTP tunnel client reliability", () => {
@@ -150,9 +153,9 @@ describe("HTTP tunnel client reliability", () => {
     const client = await startHttpTunnelClient({
       heartbeatIntervalMs: 10,
       localPort: 1,
-      name: "demo",
       reconnectDelayMs: 10,
       serverUrl: `ws://${address.host}:${address.port}`,
+      subdomain: "demo",
     });
     cleanups.push(() => client.close());
 
@@ -178,19 +181,25 @@ describe("HTTP tunnel client reliability", () => {
     const client = await startHttpTunnelClient({
       heartbeatIntervalMs: 0,
       localPort: localServer.port,
-      name: "demo",
       reconnectDelayMs: 10,
       serverUrl: controlServer.url,
+      subdomain: "demo",
     });
     cleanups.push(() => client.close());
-    const firstConnection = registry.get("demo")?.connection;
+    const firstConnection = registry.get({
+      type: "subdomain",
+      subdomain: "demo",
+    })?.connection;
     if (!firstConnection) {
       throw new Error("expected initial registration");
     }
 
     await firstConnection.close(1011, "drop");
     await waitFor(() => {
-      const nextConnection = registry.get("demo")?.connection;
+      const nextConnection = registry.get({
+        type: "subdomain",
+        subdomain: "demo",
+      })?.connection;
       return nextConnection !== undefined && nextConnection !== firstConnection;
     }, "expected tunnel client to reconnect");
 

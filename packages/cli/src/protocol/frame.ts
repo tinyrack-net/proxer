@@ -2,13 +2,13 @@ export type HeaderMap = Record<string, string | string[]>;
 
 export type RegisterFrame = {
   readonly type: "register";
-  readonly name: string;
+  readonly subdomain?: string;
   readonly token?: string;
 };
 
 export type RegisteredFrame = {
   readonly type: "registered";
-  readonly name: string;
+  readonly subdomain?: string;
 };
 
 export type OpenFrame = {
@@ -104,7 +104,7 @@ const isBase64 = (value: unknown): value is string => {
 
 type CandidateFrame = {
   readonly type?: unknown;
-  readonly name?: unknown;
+  readonly subdomain?: unknown;
   readonly token?: unknown;
   readonly streamId?: unknown;
   readonly kind?: unknown;
@@ -123,12 +123,20 @@ export const isTunnelFrame = (value: unknown): value is TunnelFrame => {
   }
 
   const frame = value as CandidateFrame;
+  const hasRemovedNameField = Object.hasOwn(value, "name");
 
   switch (frame.type) {
     case "register":
-      return isNonEmptyString(frame.name) && hasOptionalString(frame.token);
+      return (
+        !hasRemovedNameField &&
+        (frame.subdomain === undefined || isNonEmptyString(frame.subdomain)) &&
+        hasOptionalString(frame.token)
+      );
     case "registered":
-      return isNonEmptyString(frame.name);
+      return (
+        !hasRemovedNameField &&
+        (frame.subdomain === undefined || isNonEmptyString(frame.subdomain))
+      );
     case "open":
       return (
         isNonEmptyString(frame.streamId) &&

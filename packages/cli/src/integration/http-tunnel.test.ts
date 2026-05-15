@@ -107,8 +107,8 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localServer.port,
-      name: "demo",
       serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -126,7 +126,7 @@ describe("HTTP tunnel integration", () => {
     });
   });
 
-  it("proxies direct localhost requests to the only registered tunnel", async () => {
+  it("returns 404 for direct localhost requests without a matching route", async () => {
     const localServer = await createLocalJsonEchoServer();
     cleanups.push(() => localServer.close());
     const proxerServer = await startServer({
@@ -136,19 +136,75 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localServer.port,
-      name: "demo",
       serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
 
     const response = await requestPublicJson(proxerServer.publicUrl);
 
-    expect(response.status).toBe(200);
-    expect(JSON.parse(response.body)).toEqual({
-      body: "hello world",
-      method: "POST",
-      path: "/api/hello?x=1",
+    expect(response.status).toBe(404);
+  });
+
+  it("routes root and subdomain clients exactly when a server domain is configured", async () => {
+    const rootLocalServer = await createLocalJsonEchoServer();
+    const demoLocalServer = await createLocalJsonEchoServer();
+    cleanups.push(() => rootLocalServer.close());
+    cleanups.push(() => demoLocalServer.close());
+    const proxerServer = await startServer({
+      domain: "proxy.intranet.winetree94.com",
+      listenAddress: randomAddress,
+      token: "dev-token",
     });
+    cleanups.push(() => proxerServer.close());
+    const rootTunnelClient = await startHttpTunnelClient({
+      localPort: rootLocalServer.port,
+      serverUrl: proxerServer.controlUrl,
+      token: "dev-token",
+    });
+    cleanups.push(() => rootTunnelClient.close());
+    const demoTunnelClient = await startHttpTunnelClient({
+      localPort: demoLocalServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => demoTunnelClient.close());
+
+    const rootResponse = await requestPublicJson(proxerServer.publicUrl, {
+      host: "proxy.intranet.winetree94.com",
+    });
+    const demoResponse = await requestPublicJson(proxerServer.publicUrl, {
+      host: "demo.proxy.intranet.winetree94.com",
+    });
+    const unknownResponse = await requestPublicJson(proxerServer.publicUrl, {
+      host: "other.proxy.intranet.winetree94.com",
+    });
+
+    expect(rootResponse.status).toBe(200);
+    expect(demoResponse.status).toBe(200);
+    expect(unknownResponse.status).toBe(404);
+  });
+
+  it("does not route direct requests to the only registered tunnel", async () => {
+    const localServer = await createLocalJsonEchoServer();
+    cleanups.push(() => localServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+
+    const response = await requestPublicJson(proxerServer.publicUrl);
+
+    expect(response.status).toBe(404);
   });
 });

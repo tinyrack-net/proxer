@@ -3,6 +3,7 @@ import type { ProxerCommandContext } from "#app/application.ts";
 import { runServer as runServerRuntime } from "#app/cli/run.ts";
 import {
   controlPathFlag,
+  serverDomainFlag,
   serverListenFlag,
   tokenFlag,
 } from "#app/cli/shared-flags.ts";
@@ -12,6 +13,7 @@ import { normalizeControlPath } from "#app/lib/control-path.ts";
 type ServerFlags = {
   readonly listen: string;
   readonly controlPath?: string;
+  readonly domain?: string;
   readonly token?: string;
 };
 
@@ -24,6 +26,7 @@ export const buildServerCommand = () => {
       flags: {
         listen: serverListenFlag,
         controlPath: controlPathFlag,
+        domain: serverDomainFlag,
         token: tokenFlag,
       },
     },
@@ -32,7 +35,12 @@ export const buildServerCommand = () => {
       const controlPath = normalizeControlPath(flags.controlPath);
 
       await runServerRuntime(
-        { controlPath, listenAddress, token: flags.token },
+        {
+          controlPath,
+          domain: flags.domain,
+          listenAddress,
+          token: flags.token,
+        },
         { logger: this.logger, process: this.process },
       );
     },

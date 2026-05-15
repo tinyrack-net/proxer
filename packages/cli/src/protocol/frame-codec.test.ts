@@ -7,16 +7,19 @@ import {
 
 describe("frame codec", () => {
   it("encodes and decodes JSON tunnel frames", () => {
-    const frame = { type: "registered", name: "demo" } as const;
+    const frame = { type: "registered", subdomain: "demo" } as const;
 
     expect(decodeFrame(encodeFrame(frame))).toEqual(frame);
   });
 
   it("decodes Buffer and ArrayBuffer payloads", () => {
-    const encoded = encodeFrame({ type: "registered", name: "demo" });
+    const encoded = encodeFrame({ type: "registered", subdomain: "demo" });
     const buffer = Buffer.from(encoded);
 
-    expect(decodeFrame(buffer)).toEqual({ type: "registered", name: "demo" });
+    expect(decodeFrame(buffer)).toEqual({
+      type: "registered",
+      subdomain: "demo",
+    });
     expect(
       decodeFrame(
         buffer.buffer.slice(
@@ -26,7 +29,7 @@ describe("frame codec", () => {
       ),
     ).toEqual({
       type: "registered",
-      name: "demo",
+      subdomain: "demo",
     });
   });
 

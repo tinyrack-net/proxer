@@ -35,10 +35,18 @@ export const httpServerFlag = {
   default: DEFAULT_HTTP_SERVER_URL,
 };
 
-export const httpNameFlag = {
+export const serverDomainFlag = {
   kind: "parsed" as const,
-  parse: (input: string) => input,
-  brief: "Tunnel name used for host routing.",
-  placeholder: "name",
+  parse: (input: string) => input.toLowerCase(),
+  brief: "Public root domain used for root and subdomain routing.",
+  placeholder: "example.com",
+  optional: true as const,
+};
+
+export const httpSubdomainFlag = {
+  kind: "parsed" as const,
+  parse: (input: string) => input.toLowerCase(),
+  brief: "Subdomain used for host routing.",
+  placeholder: "subdomain",
   optional: true as const,
 };

@@ -9,11 +9,16 @@ import {
 import { createStreamId } from "#app/lib/ids.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
+import {
+  parseTunnelRouteFromHost,
+  type TunnelRoute,
+} from "#app/server/route-target.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
 import { attachWebSocketUpgradeHandler } from "#app/server/websocket-upgrade.ts";
 
 export type PublicHttpServerOptions = {
   readonly address: HostPort;
+  readonly domain?: string;
   readonly registry: TunnelRegistry;
   readonly streamTimeoutMs?: number;
 };
@@ -50,21 +55,31 @@ export const getPublicListeningAddress = (server: http.Server): HostPort => {
   };
 };
 
-export const getTunnelNameFromHost = (
-  host: string | string[] | undefined,
-): string => {
+const getHostValue = (host: string | string[] | undefined): string => {
   const hostValue = Array.isArray(host) ? host[0] : host;
-  if (!hostValue) {
-    return "";
-  }
-
-  const withoutPort = hostValue.split(":")[0] ?? "";
-  return withoutPort.split(".")[0] ?? "";
+  return hostValue ?? "";
 };
 
-const endWithNoTunnel = (response: http.ServerResponse, name: string): void => {
+const routeDescription = (route: TunnelRoute): string => {
+  return route.type === "root" ? "root domain" : `subdomain ${route.subdomain}`;
+};
+
+const endWithNoRoute = (
+  response: http.ServerResponse,
+  host: string | string[] | undefined,
+): void => {
   response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
-  response.end(`No tunnel registered for ${name || "host"}\n`);
+  response.end(
+    `No tunnel route matched host ${getHostValue(host) || "missing host"}\n`,
+  );
+};
+
+const endWithNoTunnel = (
+  response: http.ServerResponse,
+  route: TunnelRoute,
+): void => {
+  response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+  response.end(`No tunnel registered for ${routeDescription(route)}\n`);
 };
 
 const encodeData = (chunk: string | Buffer): string => {
@@ -250,20 +265,27 @@ const proxyHttpRequest = ({
 };
 
 export const handlePublicHttpRequest = ({
+  domain,
   registry,
   request,
   response,
   streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
 }: {
+  readonly domain?: string;
   readonly registry: TunnelRegistry;
   readonly request: http.IncomingMessage;
   readonly response: http.ServerResponse;
   readonly streamTimeoutMs?: number;
 }): void => {
-  const name = getTunnelNameFromHost(request.headers.host);
-  const tunnel = registry.get(name) ?? registry.getOnly();
+  const route = parseTunnelRouteFromHost(request.headers.host, domain);
+  if (!route) {
+    endWithNoRoute(response, request.headers.host);
+    return;
+  }
+
+  const tunnel = registry.get(route);
   if (!tunnel) {
-    endWithNoTunnel(response, name);
+    endWithNoTunnel(response, route);
     return;
   }
 
@@ -277,18 +299,26 @@ export const handlePublicHttpRequest = ({
 
 export const startPublicHttpServer = async ({
   address,
+  domain,
   registry,
   streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
 }: PublicHttpServerOptions): Promise<PublicHttpServerHandle> => {
   const upgradeSockets = new Set<Duplex>();
   const server = http.createServer((request, response) => {
-    handlePublicHttpRequest({ registry, request, response, streamTimeoutMs });
+    handlePublicHttpRequest({
+      domain,
+      registry,
+      request,
+      response,
+      streamTimeoutMs,
+    });
   });
   attachWebSocketUpgradeHandler(server, {
     onSocket(socket) {
       upgradeSockets.add(socket);
       socket.once("close", () => upgradeSockets.delete(socket));
     },
+    domain,
     registry,
   });
 

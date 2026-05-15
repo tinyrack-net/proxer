@@ -26,15 +26,14 @@ Run one public Proxer server, then connect tunnel clients from private networks.
 - **Server-Sent Events support** without buffering the response body
 - **WebSocket upgrade proxy** for realtime applications
 - **Client-initiated tunnels** that work from NATed or private networks
-- **Named tunnel routing** via the first host label, for example `demo.example.com`
-- **Single-tunnel fallback** for simple localhost/IP demos
+- **Subdomain/root-domain tunnel routing** for explicit public hosts
 - **Standalone executables** built from the Node.js CLI
 
 ## Installation
 
 ### npm
 
-Use npm on any platform, or as a cross-platform fallback.
+Use npm on any platform, or as a cross-platform option.
 
 ```bash
 npm install -g @tinyrack/proxer
@@ -61,13 +60,13 @@ docker run --rm tinyrack/proxer --version
 Run a public Proxer server in Docker and publish port 8080:
 
 ```bash
-docker run --rm -p 8080:8080 tinyrack/proxer server --listen 0.0.0.0:8080 --token dev-token
+docker run --rm -p 8080:8080 tinyrack/proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
 ```
 
 On Linux, run the tunnel client with host networking when it needs to reach a service on the Docker host:
 
 ```bash
-docker run --rm --network host tinyrack/proxer http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
+docker run --rm --network host tinyrack/proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
 ```
 
 On macOS and Windows Docker Desktop, use `host.docker.internal` instead of `127.0.0.1` when the container needs to reach a local service on the host.
@@ -90,7 +89,7 @@ readinessProbe:
 Start the public Proxer server:
 
 ```bash
-proxer server --listen 0.0.0.0:8080 --token dev-token
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
 ```
 
 Start a local app on the client machine:
@@ -99,26 +98,36 @@ Start a local app on the client machine:
 python3 -m http.server 3000 --bind 127.0.0.1
 ```
 
-Connect the tunnel client:
+Connect a tunnel client for the root domain route:
 
 ```bash
 proxer http 3000 \
   --server ws://your-server.example.com:8080 \
-  --name demo \
   --token dev-token
 ```
 
-Then open the public listener. With exactly one registered tunnel, direct requests route to that tunnel:
+Then open the public listener with the configured root domain Host:
 
 ```bash
-curl http://your-server.example.com:8080/
+curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
 ```
 
-You can also route explicitly by host name. The first host label maps to the tunnel name:
+Alternatively, connect a tunnel client for a specific subdomain:
 
 ```bash
-curl -H 'Host: demo.localhost' http://127.0.0.1:8080/
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --subdomain demo \
+  --token dev-token
 ```
+
+Then route by the matching subdomain Host:
+
+```bash
+curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+```
+
+Requests for unregistered subdomains return 404. Proxer does not route direct localhost/IP requests to a single connected client automatically.
 
 ## How It Works
 
@@ -156,7 +165,7 @@ proxer server \
 proxer http 3000 \
   --server ws://127.0.0.1:8080 \
   --control-path /_proxer/control \
-  --name demo \
+  --subdomain demo \
   --token dev-token
 ```
 
@@ -173,19 +182,19 @@ python3 -m http.server 3000 --bind 127.0.0.1
 Start the Proxer server in another terminal:
 
 ```bash
-proxer server --listen 127.0.0.1:8080 --token dev-token
+proxer server --listen 127.0.0.1:8080 --domain proxy.localhost --token dev-token
 ```
 
 Start the tunnel client in a third terminal:
 
 ```bash
-proxer http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
+proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
 ```
 
 Call the public listener:
 
 ```bash
-curl -H 'Host: demo.localhost' http://127.0.0.1:8080/
+curl -H 'Host: demo.proxy.localhost' http://127.0.0.1:8080/
 ```
 
 ### Server-Sent Events
@@ -223,7 +232,7 @@ EOF
 Run the same `proxer server` and `proxer http` commands from the HTTP example, then stream events through the tunnel:
 
 ```bash
-curl -N -H 'Host: demo.localhost' http://127.0.0.1:8080/events
+curl -N -H 'Host: demo.proxy.localhost' http://127.0.0.1:8080/events
 ```
 
 ### WebSocket
@@ -257,7 +266,7 @@ node --input-type=module <<'EOF'
 import { WebSocket } from "ws";
 
 const socket = new WebSocket("ws://127.0.0.1:8080/echo", {
-  headers: { host: "demo.localhost" },
+  headers: { host: "demo.proxy.localhost" },
 });
 
 socket.on("open", () => socket.send("hello"));
@@ -283,7 +292,7 @@ Run the CLI from this repository:
 ```bash
 mise exec -- pnpm --filter @tinyrack/proxer start --help
 mise exec -- pnpm --filter @tinyrack/proxer start server --listen 127.0.0.1:8080 --token dev-token
-mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
+mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
 ```
 
 ## Standalone Executables

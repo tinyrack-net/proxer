@@ -123,13 +123,129 @@ describe("public HTTP server", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(response.body).toContain("No tunnel registered for missing");
+    expect(response.body).toContain(
+      "No tunnel registered for subdomain missing",
+    );
+  });
+
+  it("routes root and subdomain hosts explicitly for a configured domain", async () => {
+    const registry = new TunnelRegistry();
+    const rootConnection = new FakeTunnelConnection();
+    const demoConnection = new FakeTunnelConnection();
+    registry.register({ route: { type: "root" }, connection: rootConnection });
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection: demoConnection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      domain: "proxy.intranet.winetree94.com",
+      registry,
+    });
+    handles.push(handle);
+
+    const rootResponsePromise = requestPublic({
+      headers: { host: "proxy.intranet.winetree94.com" },
+      url: handle.url,
+    });
+    const rootOpenFrame = await rootConnection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+    if (rootOpenFrame.type !== "open") {
+      throw new Error("expected root open frame");
+    }
+    rootConnection.emitFrame({
+      headers: { "content-type": "text/plain" },
+      status: 200,
+      streamId: rootOpenFrame.streamId,
+      type: "headers",
+    });
+    rootConnection.emitFrame({
+      data: Buffer.from("root").toString("base64"),
+      direction: "response",
+      streamId: rootOpenFrame.streamId,
+      type: "data",
+    });
+    rootConnection.emitFrame({
+      direction: "response",
+      streamId: rootOpenFrame.streamId,
+      type: "end",
+    });
+
+    await expect(rootResponsePromise).resolves.toMatchObject({
+      body: "root",
+      status: 200,
+    });
+
+    const demoResponsePromise = requestPublic({
+      headers: { host: "demo.proxy.intranet.winetree94.com" },
+      url: handle.url,
+    });
+    const demoOpenFrame = await demoConnection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+    if (demoOpenFrame.type !== "open") {
+      throw new Error("expected demo open frame");
+    }
+    demoConnection.emitFrame({
+      headers: { "content-type": "text/plain" },
+      status: 200,
+      streamId: demoOpenFrame.streamId,
+      type: "headers",
+    });
+    demoConnection.emitFrame({
+      data: Buffer.from("demo").toString("base64"),
+      direction: "response",
+      streamId: demoOpenFrame.streamId,
+      type: "data",
+    });
+    demoConnection.emitFrame({
+      direction: "response",
+      streamId: demoOpenFrame.streamId,
+      type: "end",
+    });
+
+    await expect(demoResponsePromise).resolves.toMatchObject({
+      body: "demo",
+      status: 200,
+    });
+
+    const unknownResponse = await requestPublic({
+      headers: { host: "other.proxy.intranet.winetree94.com" },
+      url: handle.url,
+    });
+
+    expect(unknownResponse.status).toBe(404);
+    expect(rootConnection.sent).toHaveLength(2);
+    expect(demoConnection.sent).toHaveLength(2);
+  });
+
+  it("does not route unmatched direct requests to the only tunnel", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const response = await requestPublic({ url: handle.url });
+
+    expect(response.status).toBe(404);
+    expect(connection.sent).toEqual([]);
   });
 
   it("opens a tunnel stream for a registered host", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();
-    registry.register({ name: "demo", connection });
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
     const handle = await startPublicHttpServer({
       address: randomAddress,
       registry,
@@ -182,7 +298,10 @@ describe("public HTTP server", () => {
   it("forwards request body data and request end frames", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();
-    registry.register({ name: "demo", connection });
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
     const handle = await startPublicHttpServer({
       address: randomAddress,
       registry,
@@ -230,7 +349,10 @@ describe("public HTTP server", () => {
   it("times out streams that do not receive response headers", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();
-    registry.register({ name: "demo", connection });
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
     const handle = await startPublicHttpServer({
       address: randomAddress,
       registry,
@@ -259,7 +381,10 @@ describe("public HTTP server", () => {
   it("sends a close frame when the public request aborts", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();
-    registry.register({ name: "demo", connection });
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
     const handle = await startPublicHttpServer({
       address: randomAddress,
       registry,
@@ -290,7 +415,10 @@ describe("public HTTP server", () => {
   it("closes an active stream when the tunnel disconnects", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();
-    registry.register({ name: "demo", connection });
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
     const handle = await startPublicHttpServer({
       address: randomAddress,
       registry,

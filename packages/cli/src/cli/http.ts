@@ -3,8 +3,8 @@ import type { ProxerCommandContext } from "#app/application.ts";
 import { runHttpClient } from "#app/cli/run.ts";
 import {
   controlPathFlag,
-  httpNameFlag,
   httpServerFlag,
+  httpSubdomainFlag,
   tokenFlag,
 } from "#app/cli/shared-flags.ts";
 import { resolveControlServerUrl } from "#app/lib/control-url.ts";
@@ -13,7 +13,7 @@ import { ProxerError } from "#app/lib/error.ts";
 type HttpFlags = {
   readonly server: string;
   readonly controlPath?: string;
-  readonly name?: string;
+  readonly subdomain?: string;
   readonly token?: string;
 };
 
@@ -39,7 +39,7 @@ export const buildHttpCommand = () => {
       flags: {
         server: httpServerFlag,
         controlPath: controlPathFlag,
-        name: httpNameFlag,
+        subdomain: httpSubdomainFlag,
         token: tokenFlag,
       },
       positional: {
@@ -54,18 +54,14 @@ export const buildHttpCommand = () => {
       },
     },
     async func(flags, localPort) {
-      if (!flags.name) {
-        throw new ProxerError("--name is required");
-      }
-
       await runHttpClient(
         {
           localPort,
-          name: flags.name,
           serverUrl: resolveControlServerUrl({
             controlPath: flags.controlPath,
             server: flags.server,
           }),
+          subdomain: flags.subdomain,
           token: flags.token,
         },
         { logger: this.logger, process: this.process },

@@ -109,7 +109,10 @@ describe("single-port server health probes", () => {
   it("does not forward probe paths to registered tunnels", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();
-    registry.register({ connection, name: "demo" });
+    registry.register({
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
     const handle = await startSinglePortServer({
       listenAddress: randomAddress,
       registry,

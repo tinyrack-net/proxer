@@ -4,30 +4,34 @@ import { normalizeWebSocketUpgradeHeaders } from "#app/lib/headers.ts";
 import { createStreamId } from "#app/lib/ids.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
+import {
+  parseTunnelRouteFromHost,
+  type TunnelRoute,
+} from "#app/server/route-target.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
 
 export type WebSocketUpgradeHandlerOptions = {
+  readonly domain?: string;
   readonly registry: TunnelRegistry;
   readonly onSocket?: (socket: Duplex) => void;
 };
 
-const getTunnelNameFromHost = (host: string | string[] | undefined): string => {
+const getHostValue = (host: string | string[] | undefined): string => {
   const hostValue = Array.isArray(host) ? host[0] : host;
-  if (!hostValue) {
-    return "";
-  }
-
-  const withoutPort = hostValue.split(":")[0] ?? "";
-  return withoutPort.split(".")[0] ?? "";
+  return hostValue ?? "";
 };
 
-const writeNoTunnelResponse = (socket: Duplex, name: string): void => {
+const routeDescription = (route: TunnelRoute): string => {
+  return route.type === "root" ? "root domain" : `subdomain ${route.subdomain}`;
+};
+
+const writeNotFoundResponse = (socket: Duplex, message: string): void => {
   socket.write(
     "HTTP/1.1 404 Not Found\r\n" +
       "content-type: text/plain; charset=utf-8\r\n" +
       "connection: close\r\n" +
       "\r\n" +
-      `No tunnel registered for ${name || "host"}\n`,
+      `${message}\n`,
     () => socket.destroy(),
   );
 };
@@ -144,13 +148,24 @@ export const handlePublicWebSocketUpgrade = (
   request: http.IncomingMessage,
   socket: Duplex,
   head: Buffer,
-  { onSocket, registry }: WebSocketUpgradeHandlerOptions,
+  { domain, onSocket, registry }: WebSocketUpgradeHandlerOptions,
 ): void => {
   onSocket?.(socket);
-  const name = getTunnelNameFromHost(request.headers.host);
-  const tunnel = registry.get(name) ?? registry.getOnly();
+  const route = parseTunnelRouteFromHost(request.headers.host, domain);
+  if (!route) {
+    writeNotFoundResponse(
+      socket,
+      `No tunnel route matched host ${getHostValue(request.headers.host) || "missing host"}`,
+    );
+    return;
+  }
+
+  const tunnel = registry.get(route);
   if (!tunnel) {
-    writeNoTunnelResponse(socket, name);
+    writeNotFoundResponse(
+      socket,
+      `No tunnel registered for ${routeDescription(route)}`,
+    );
     return;
   }
 

@@ -17,6 +17,7 @@ export type SinglePortServerOptions = {
   readonly listenAddress: HostPort;
   readonly registry: TunnelRegistry;
   readonly controlPath?: string;
+  readonly domain?: string;
   readonly token?: string;
   readonly streamTimeoutMs?: number;
 };
@@ -46,6 +47,7 @@ const pathnameOf = (url: string | undefined): string => {
 
 export const startSinglePortServer = async ({
   controlPath: inputControlPath,
+  domain,
   listenAddress,
   registry,
   streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
@@ -70,7 +72,13 @@ export const startSinglePortServer = async ({
       return;
     }
 
-    handlePublicHttpRequest({ registry, request, response, streamTimeoutMs });
+    handlePublicHttpRequest({
+      domain,
+      registry,
+      request,
+      response,
+      streamTimeoutMs,
+    });
   });
 
   server.on("upgrade", (request, socket, head) => {
@@ -87,6 +95,7 @@ export const startSinglePortServer = async ({
     }
 
     handlePublicWebSocketUpgrade(request, socket, head, {
+      domain,
       onSocket(upgradeSocket) {
         upgradeSockets.add(upgradeSocket);
         upgradeSocket.once("close", () => upgradeSockets.delete(upgradeSocket));

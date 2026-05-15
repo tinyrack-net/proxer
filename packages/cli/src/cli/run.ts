@@ -95,7 +95,11 @@ export const runHttpClient = async (
   const client = await startHttpTunnelClient(config);
 
   try {
-    logger.info(`name: ${client.name}`);
+    if (client.subdomain) {
+      logger.info(`subdomain: ${client.subdomain}`);
+    } else {
+      logger.info("route: root domain");
+    }
     logger.info(`local: 127.0.0.1:${config.localPort}`);
     logger.info(`server: ${config.serverUrl}`);
     await waitForShutdownSignal(process);

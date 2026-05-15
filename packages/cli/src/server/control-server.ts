@@ -4,6 +4,7 @@ import { formatHostPort, type HostPort } from "#app/lib/address.ts";
 import { ProxerError } from "#app/lib/error.ts";
 import type { RegisterFrame } from "#app/protocol/frame.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
+import type { TunnelRoute } from "#app/server/route-target.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
 
 export type ControlServerOptions = {
@@ -56,10 +57,10 @@ export const createControlWebSocketServer = ({
 
   webSocketServer.on("connection", (socket) => {
     const connection = createWebSocketTunnelConnection(socket);
-    let registeredName: string | undefined;
+    let registeredRoute: TunnelRoute | undefined;
 
     connection.onFrame((frame) => {
-      if (registeredName) {
+      if (registeredRoute) {
         return;
       }
 
@@ -73,8 +74,12 @@ export const createControlWebSocketServer = ({
         return;
       }
 
+      const route: TunnelRoute = frame.subdomain
+        ? { type: "subdomain", subdomain: frame.subdomain }
+        : { type: "root" };
+
       try {
-        registry.register({ name: frame.name, connection });
+        registry.register({ route, connection });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         void connection
@@ -83,13 +88,16 @@ export const createControlWebSocketServer = ({
         return;
       }
 
-      registeredName = frame.name;
-      void connection.send({ type: "registered", name: frame.name });
+      registeredRoute = route;
+      void connection.send({
+        type: "registered",
+        ...(route.type === "subdomain" ? { subdomain: route.subdomain } : {}),
+      });
     });
 
     connection.onClose(() => {
-      if (registeredName) {
-        registry.unregister(registeredName, connection);
+      if (registeredRoute) {
+        registry.unregister(registeredRoute, connection);
       }
     });
   });

@@ -6,6 +6,7 @@ import { TunnelRegistry } from "#app/server/stream-registry.ts";
 export type ServerConfig = {
   readonly listenAddress: HostPort;
   readonly controlPath?: string;
+  readonly domain?: string;
   readonly token?: string;
 };
 
@@ -17,12 +18,14 @@ export type RunningServer = {
 
 export const startServer = async ({
   controlPath,
+  domain,
   listenAddress,
   token,
 }: ServerConfig): Promise<RunningServer> => {
   const registry = new TunnelRegistry();
   return await startSinglePortServer({
     controlPath: normalizeControlPath(controlPath),
+    domain,
     listenAddress,
     registry,
     token,

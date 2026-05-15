@@ -134,10 +134,11 @@ describe("proxer CLI", () => {
     expect(result.stdout).toContain("server stopped");
   });
 
-  it("http command requires a tunnel name", async () => {
-    const result = await runWithCapturedOutput(["http", "3000"]);
+  it("http help lists subdomain routing without the removed name flag", async () => {
+    const result = await runWithCapturedOutput(["http", "--help"]);
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("--name is required");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("--subdomain");
+    expect(result.stderr).toBe("");
   });
 });

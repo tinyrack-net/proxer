@@ -60,6 +60,7 @@ class FakeTunnelConnection implements TunnelConnection {
 
 const connectRawUpgrade = async (
   url: string,
+  host = "demo.localhost",
 ): Promise<{
   readonly socket: net.Socket;
   readonly waitForData: () => Promise<Buffer>;
@@ -86,7 +87,7 @@ const connectRawUpgrade = async (
 
   socket.write(
     "GET /chat HTTP/1.1\r\n" +
-      "Host: demo.localhost\r\n" +
+      `Host: ${host}\r\n` +
       "Connection: Upgrade\r\n" +
       "Upgrade: websocket\r\n" +
       "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
@@ -121,7 +122,10 @@ describe("public WebSocket upgrade tunneling", () => {
   it("opens a websocket tunnel stream and proxies raw socket bytes", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();
-    registry.register({ name: "demo", connection });
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
     const handle = await startPublicHttpServer({
       address: randomAddress,
       registry,
@@ -180,5 +184,41 @@ describe("public WebSocket upgrade tunneling", () => {
     );
 
     expect(requestDataFrame).toMatchObject({ streamId: openFrame.streamId });
+  });
+
+  it("does not route an unknown websocket host to the only tunnel", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      domain: "proxy.intranet.winetree94.com",
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(
+      handle.url,
+      "other.proxy.intranet.winetree94.com",
+    );
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve) => {
+          if (rawClient.socket.destroyed) {
+            resolve();
+            return;
+          }
+          rawClient.socket.once("close", () => resolve());
+          rawClient.socket.destroy();
+        }),
+    );
+
+    const response = await rawClient.waitForData();
+
+    expect(response.toString("utf8")).toContain("404 Not Found");
+    expect(connection.sent).toEqual([]);
   });
 });

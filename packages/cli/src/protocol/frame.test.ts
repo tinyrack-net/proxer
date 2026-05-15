@@ -3,8 +3,10 @@ import { assertTunnelFrame, isTunnelFrame } from "#app/protocol/frame.ts";
 
 describe("tunnel frame validation", () => {
   it("accepts valid frames", () => {
-    expect(isTunnelFrame({ type: "register", name: "demo" })).toBe(true);
-    expect(isTunnelFrame({ type: "registered", name: "demo" })).toBe(true);
+    expect(isTunnelFrame({ type: "register" })).toBe(true);
+    expect(isTunnelFrame({ type: "register", subdomain: "demo" })).toBe(true);
+    expect(isTunnelFrame({ type: "registered" })).toBe(true);
+    expect(isTunnelFrame({ type: "registered", subdomain: "demo" })).toBe(true);
     expect(
       isTunnelFrame({
         type: "open",
@@ -59,6 +61,13 @@ describe("tunnel frame validation", () => {
     ).toBe(false);
   });
 
+  it("rejects name fields and empty subdomains on registration frames", () => {
+    expect(isTunnelFrame({ type: "register", name: "demo" })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", name: "demo" })).toBe(false);
+    expect(isTunnelFrame({ type: "register", subdomain: "" })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", subdomain: "" })).toBe(false);
+  });
+
   it("requires open frames to include stream id, kind, method, and path", () => {
     expect(
       isTunnelFrame({
@@ -83,10 +92,10 @@ describe("tunnel frame validation", () => {
 
   it("asserts valid frames and throws for invalid frames", () => {
     expect(() =>
-      assertTunnelFrame({ type: "registered", name: "demo" }),
+      assertTunnelFrame({ type: "registered", subdomain: "demo" }),
     ).not.toThrow();
-    expect(() => assertTunnelFrame({ type: "registered" })).toThrow(
-      "Invalid tunnel frame",
-    );
+    expect(() =>
+      assertTunnelFrame({ type: "registered", name: "demo" }),
+    ).toThrow("Invalid tunnel frame");
   });
 });

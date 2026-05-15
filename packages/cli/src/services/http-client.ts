@@ -7,7 +7,7 @@ import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection
 export type HttpClientConfig = {
   readonly localPort: number;
   readonly serverUrl: string;
-  readonly name: string;
+  readonly subdomain?: string;
   readonly token?: string;
   readonly heartbeatIntervalMs?: number;
   readonly heartbeatTimeoutMs?: number;
@@ -15,7 +15,7 @@ export type HttpClientConfig = {
 };
 
 export type RunningTunnelClient = {
-  readonly name: string;
+  readonly subdomain?: string;
   close(): Promise<void>;
 };
 
@@ -36,12 +36,12 @@ const DEFAULT_RECONNECT_DELAY_MS = 1_000;
 
 const registerConnection = async ({
   connection,
-  name,
+  subdomain,
   socket,
   token,
 }: {
   readonly connection: ReturnType<typeof createWebSocketTunnelConnection>;
-  readonly name: string;
+  readonly subdomain?: string;
   readonly socket: WebSocket;
   readonly token?: string;
 }): Promise<void> => {
@@ -51,14 +51,16 @@ const registerConnection = async ({
   try {
     await new Promise<void>((resolve, reject) => {
       removeRegistrationFrameListener = connection.onFrame((frame) => {
-        if (frame.type === "registered" && frame.name === name) {
+        if (frame.type === "registered" && frame.subdomain === subdomain) {
           resolve();
           return;
         }
 
         if (frame.type === "registered") {
           reject(
-            new ProxerError(`Registered unexpected tunnel "${frame.name}"`),
+            new ProxerError(
+              `Registered unexpected tunnel "${frame.subdomain ?? "root"}"`,
+            ),
           );
           return;
         }
@@ -71,7 +73,11 @@ const registerConnection = async ({
         reject(error ?? new ProxerError("Tunnel registration closed"));
       });
       void connection
-        .send({ type: "register", name, token })
+        .send({
+          type: "register",
+          ...(subdomain ? { subdomain } : {}),
+          token,
+        })
         .catch((error: unknown) => {
           reject(error instanceof Error ? error : new Error(String(error)));
         });
@@ -149,9 +155,9 @@ export const startHttpTunnelClient = async ({
   heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
   heartbeatTimeoutMs = DEFAULT_HEARTBEAT_TIMEOUT_MS,
   localPort,
-  name,
   reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
   serverUrl,
+  subdomain,
   token,
 }: HttpClientConfig): Promise<RunningTunnelClient> => {
   let activeConnection: ActiveTunnelConnection | undefined;
@@ -173,7 +179,7 @@ export const startHttpTunnelClient = async ({
   const connect = async (): Promise<ActiveTunnelConnection> => {
     const socket = await openWebSocket(serverUrl);
     const connection = createWebSocketTunnelConnection(socket);
-    await registerConnection({ connection, name, socket, token });
+    await registerConnection({ connection, socket, subdomain, token });
     const detachLocalHttpForwarder = attachLocalHttpForwarder({
       connection,
       localPort,
@@ -241,7 +247,7 @@ export const startHttpTunnelClient = async ({
   activateConnection(await connect());
 
   return {
-    name,
+    subdomain,
     async close() {
       closing = true;
       if (reconnectTimer !== undefined) {

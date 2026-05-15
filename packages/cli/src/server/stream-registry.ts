@@ -1,8 +1,9 @@
 import { ProxerError } from "#app/lib/error.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
+import { type TunnelRoute, tunnelRouteKey } from "#app/server/route-target.ts";
 
 export type RegisteredTunnel = {
-  readonly name: string;
+  readonly route: TunnelRoute;
   readonly connection: TunnelConnection;
 };
 
@@ -10,15 +11,17 @@ export class TunnelRegistry {
   readonly #tunnels = new Map<string, RegisteredTunnel>();
 
   register(tunnel: RegisteredTunnel): void {
-    if (this.#tunnels.has(tunnel.name)) {
-      throw new ProxerError(`Tunnel "${tunnel.name}" is already registered`);
+    const key = tunnelRouteKey(tunnel.route);
+    if (this.#tunnels.has(key)) {
+      throw new ProxerError(duplicateRouteMessage(tunnel.route));
     }
 
-    this.#tunnels.set(tunnel.name, tunnel);
+    this.#tunnels.set(key, tunnel);
   }
 
-  unregister(name: string, connection?: TunnelConnection): void {
-    const tunnel = this.#tunnels.get(name);
+  unregister(route: TunnelRoute, connection?: TunnelConnection): void {
+    const key = tunnelRouteKey(route);
+    const tunnel = this.#tunnels.get(key);
     if (!tunnel) {
       return;
     }
@@ -27,18 +30,18 @@ export class TunnelRegistry {
       return;
     }
 
-    this.#tunnels.delete(name);
+    this.#tunnels.delete(key);
   }
 
-  get(name: string): RegisteredTunnel | undefined {
-    return this.#tunnels.get(name);
-  }
-
-  getOnly(): RegisteredTunnel | undefined {
-    if (this.#tunnels.size !== 1) {
-      return undefined;
-    }
-
-    return this.#tunnels.values().next().value;
+  get(route: TunnelRoute): RegisteredTunnel | undefined {
+    return this.#tunnels.get(tunnelRouteKey(route));
   }
 }
+
+const duplicateRouteMessage = (route: TunnelRoute): string => {
+  if (route.type === "root") {
+    return "Tunnel root domain is already registered";
+  }
+
+  return `Tunnel subdomain "${route.subdomain}" is already registered`;
+};

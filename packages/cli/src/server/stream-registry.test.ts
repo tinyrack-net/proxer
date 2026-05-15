@@ -16,66 +16,63 @@ const createConnection = (): TunnelConnection => ({
 });
 
 describe("TunnelRegistry", () => {
-  it("registers a tunnel by name", () => {
+  it("registers a tunnel by explicit route", () => {
     const registry = new TunnelRegistry();
     const connection = createConnection();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
 
-    registry.register({ name: "demo", connection });
+    registry.register({ route, connection });
 
-    expect(registry.get("demo")).toEqual({ name: "demo", connection });
+    expect(registry.get(route)).toEqual({ route, connection });
   });
 
-  it("rejects duplicate active tunnel names", () => {
+  it("rejects duplicate active subdomain routes", () => {
     const registry = new TunnelRegistry();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
 
-    registry.register({ name: "demo", connection: createConnection() });
+    registry.register({ route, connection: createConnection() });
 
     expect(() =>
-      registry.register({ name: "demo", connection: createConnection() }),
+      registry.register({ route, connection: createConnection() }),
     ).toThrow(ProxerError);
     expect(() =>
-      registry.register({ name: "demo", connection: createConnection() }),
-    ).toThrow('Tunnel "demo" is already registered');
+      registry.register({ route, connection: createConnection() }),
+    ).toThrow('Tunnel subdomain "demo" is already registered');
   });
 
-  it("unregisters a tunnel by name", () => {
+  it("rejects duplicate root routes", () => {
     const registry = new TunnelRegistry();
+    const route = { type: "root" } as const;
 
-    registry.register({ name: "demo", connection: createConnection() });
-    registry.unregister("demo");
+    registry.register({ route, connection: createConnection() });
 
-    expect(registry.get("demo")).toBeUndefined();
+    expect(() =>
+      registry.register({ route, connection: createConnection() }),
+    ).toThrow("Tunnel root domain is already registered");
+  });
+
+  it("unregisters a tunnel by exact route", () => {
+    const registry = new TunnelRegistry();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
+
+    registry.register({ route, connection: createConnection() });
+    registry.unregister(route);
+
+    expect(registry.get(route)).toBeUndefined();
   });
 
   it("does not unregister a replaced connection when connection does not match", () => {
     const registry = new TunnelRegistry();
     const originalConnection = createConnection();
     const otherConnection = createConnection();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
 
-    registry.register({ name: "demo", connection: originalConnection });
-    registry.unregister("demo", otherConnection);
+    registry.register({ route, connection: originalConnection });
+    registry.unregister(route, otherConnection);
 
-    expect(registry.get("demo")).toEqual({
-      name: "demo",
+    expect(registry.get(route)).toEqual({
+      route,
       connection: originalConnection,
     });
-  });
-
-  it("returns the only registered tunnel as a fallback", () => {
-    const registry = new TunnelRegistry();
-    const connection = createConnection();
-
-    registry.register({ name: "demo", connection });
-
-    expect(registry.getOnly()).toEqual({ name: "demo", connection });
-  });
-
-  it("does not return a fallback when multiple tunnels are registered", () => {
-    const registry = new TunnelRegistry();
-
-    registry.register({ name: "demo", connection: createConnection() });
-    registry.register({ name: "other", connection: createConnection() });
-
-    expect(registry.getOnly()).toBeUndefined();
   });
 });

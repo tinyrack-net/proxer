@@ -31,6 +31,7 @@ describe("runtime assembly", () => {
       | {
           readonly listenAddress: HostPort;
           readonly controlPath?: string;
+          readonly domain?: string;
           readonly token?: string;
         }
       | undefined;
@@ -38,6 +39,7 @@ describe("runtime assembly", () => {
     const runPromise = runServer(
       {
         controlPath: "/__proxer_control_7f3d9a2b__",
+        domain: "proxy.example.com",
         listenAddress: { host: "127.0.0.1", port: 8080 },
         token: "dev-token",
       },
@@ -61,6 +63,7 @@ describe("runtime assembly", () => {
 
     expect(observedConfig).toEqual({
       controlPath: "/__proxer_control_7f3d9a2b__",
+      domain: "proxy.example.com",
       listenAddress: { host: "127.0.0.1", port: 8080 },
       token: "dev-token",
     });
@@ -84,7 +87,7 @@ describe("runtime assembly", () => {
       | {
           readonly localPort: number;
           readonly serverUrl: string;
-          readonly name: string;
+          readonly subdomain?: string;
           readonly token?: string;
         }
       | undefined;
@@ -92,8 +95,8 @@ describe("runtime assembly", () => {
     const runPromise = runHttpClient(
       {
         localPort: 3000,
-        name: "demo",
         serverUrl: "ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
+        subdomain: "demo",
         token: "dev-token",
       },
       {
@@ -102,7 +105,7 @@ describe("runtime assembly", () => {
         async startHttpTunnelClient(config) {
           observedConfig = config;
           return {
-            name: config.name,
+            subdomain: config.subdomain,
             async close() {
               closed.push("client");
             },
@@ -115,11 +118,11 @@ describe("runtime assembly", () => {
 
     expect(observedConfig).toEqual({
       localPort: 3000,
-      name: "demo",
       serverUrl: "ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
+      subdomain: "demo",
       token: "dev-token",
     });
-    expect(logger.messages).toContain("name: demo");
+    expect(logger.messages).toContain("subdomain: demo");
     expect(logger.messages).toContain("local: 127.0.0.1:3000");
     expect(logger.messages).toContain(
       "server: ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
@@ -130,5 +133,33 @@ describe("runtime assembly", () => {
 
     expect(closed).toEqual(["client"]);
     expect(logger.messages).toContain("http tunnel stopped");
+  });
+
+  it("logs root-domain routing for an HTTP tunnel without a subdomain", async () => {
+    const logger = createLogger();
+    const process = createSignalTarget();
+    const runPromise = runHttpClient(
+      {
+        localPort: 3000,
+        serverUrl: "ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
+      },
+      {
+        logger,
+        process,
+        async startHttpTunnelClient(config) {
+          return {
+            subdomain: config.subdomain,
+            async close() {},
+          };
+        },
+      },
+    );
+
+    await Promise.resolve();
+
+    expect(logger.messages).toContain("route: root domain");
+
+    process.emit("SIGTERM");
+    await runPromise;
   });
 });
