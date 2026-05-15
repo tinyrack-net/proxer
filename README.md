@@ -129,6 +129,76 @@ curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080
 
 Requests for unregistered subdomains return 404. Proxer does not route direct localhost/IP requests to a single connected client automatically.
 
+## Environment Variables
+
+CLI flags have highest precedence, then `PROXER_` environment variables, then built-in defaults.
+
+`proxer server` supports:
+
+| CLI flag | Environment variable | Default |
+| --- | --- | --- |
+| `--listen <host:port>` | `PROXER_LISTEN` | `127.0.0.1:8080` |
+| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
+| `--domain <domain>` | `PROXER_DOMAIN` | unset |
+| `--token <token>` | `PROXER_TOKEN` | unset |
+| `--trusted-proxy <proxy>` | `PROXER_TRUSTED_PROXIES` | unset |
+
+`proxer http <port>` supports:
+
+| CLI flag | Environment variable | Default |
+| --- | --- | --- |
+| `--server <url>` | `PROXER_SERVER` | `ws://127.0.0.1:8080` |
+| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
+| `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | unset |
+| `--token <token>` | `PROXER_TOKEN` | unset |
+
+The local port for `proxer http <port>` remains positional and does not have an environment variable.
+
+`--trusted-proxy` is a singular repeatable flag:
+
+```bash
+proxer server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --trusted-proxy loopback \
+  --trusted-proxy private \
+  --token "$PROXER_TOKEN"
+```
+
+`PROXER_TRUSTED_PROXIES` is plural and comma-separated:
+
+```bash
+PROXER_LISTEN=0.0.0.0:8080 \
+PROXER_DOMAIN=proxy.example.com \
+PROXER_TRUSTED_PROXIES=loopback,private,10.42.0.0/16 \
+PROXER_TOKEN=secret \
+proxer server
+```
+
+Supported trusted proxy values are `loopback`, `private`, IP literals, and CIDR ranges. Only trust reverse proxies you control.
+
+### Reverse Proxy / Traefik
+
+When Proxer runs behind Traefik or another reverse proxy, configure the TCP peer addresses that may supply `X-Forwarded-*` headers. Without trusted proxies, Proxer ignores forwarded host/protocol/client IP headers for routing.
+
+```bash
+PROXER_LISTEN=0.0.0.0:8080 \
+PROXER_DOMAIN=proxy.intranet.example.com \
+PROXER_TRUSTED_PROXIES=private,loopback \
+PROXER_TOKEN=... \
+proxer server
+```
+
+Example client configuration through the proxy:
+
+```bash
+PROXER_SERVER=wss://proxy.intranet.example.com \
+PROXER_CONTROL_PATH=/__proxer_control_7f3d9a2b__ \
+PROXER_SUBDOMAIN=demo \
+PROXER_TOKEN=... \
+proxer http 3000
+```
+
 ## How It Works
 
 Proxer uses one HTTP/WebSocket listener. Public traffic enters through that listener, while tunnel clients connect to a reserved control WebSocket path on the same port.

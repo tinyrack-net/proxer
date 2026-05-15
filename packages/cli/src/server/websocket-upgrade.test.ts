@@ -5,6 +5,7 @@ import type { DataFrame, TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import { startPublicHttpServer } from "#app/server/public-http-server.ts";
 import { TunnelRegistry } from "#app/server/stream-registry.ts";
+import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
 
@@ -61,6 +62,7 @@ class FakeTunnelConnection implements TunnelConnection {
 const connectRawUpgrade = async (
   url: string,
   host = "demo.localhost",
+  extraHeaders = "",
 ): Promise<{
   readonly socket: net.Socket;
   readonly waitForData: () => Promise<Buffer>;
@@ -90,6 +92,7 @@ const connectRawUpgrade = async (
       `Host: ${host}\r\n` +
       "Connection: Upgrade\r\n" +
       "Upgrade: websocket\r\n" +
+      extraHeaders +
       "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
       "Sec-WebSocket-Version: 13\r\n" +
       "\r\n",
@@ -220,5 +223,74 @@ describe("public WebSocket upgrade tunneling", () => {
 
     expect(response.toString("utf8")).toContain("404 Not Found");
     expect(connection.sent).toEqual([]);
+  });
+
+  it("does not route untrusted websocket forwarded hosts", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      domain: "proxy.example.com",
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(
+      handle.url,
+      "attacker.example.com",
+      "X-Forwarded-Host: demo.proxy.example.com\r\n",
+    );
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+
+    const response = await rawClient.waitForData();
+
+    expect(response.toString("utf8")).toContain("404 Not Found");
+    expect(connection.sent).toEqual([]);
+  });
+
+  it("routes trusted websocket forwarded hosts", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      domain: "proxy.example.com",
+      registry,
+      trustedProxies: parseTrustedProxyValues(["loopback"]),
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(
+      handle.url,
+      "attacker.example.com",
+      "X-Forwarded-For: 203.0.113.10\r\n" +
+        "X-Forwarded-Host: demo.proxy.example.com\r\n" +
+        "X-Forwarded-Proto: https\r\n",
+    );
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+
+    expect(openFrame).toMatchObject({
+      headers: {
+        host: "attacker.example.com",
+        "x-forwarded-for": "203.0.113.10",
+        "x-forwarded-host": "demo.proxy.example.com",
+        "x-forwarded-proto": "https",
+      },
+    });
   });
 });

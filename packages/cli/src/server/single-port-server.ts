@@ -11,6 +11,7 @@ import {
   handlePublicHttpRequest,
 } from "#app/server/public-http-server.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
+import type { TrustedProxyConfig } from "#app/server/trusted-proxies.ts";
 import { handlePublicWebSocketUpgrade } from "#app/server/websocket-upgrade.ts";
 
 export type SinglePortServerOptions = {
@@ -20,6 +21,7 @@ export type SinglePortServerOptions = {
   readonly domain?: string;
   readonly token?: string;
   readonly streamTimeoutMs?: number;
+  readonly trustedProxies?: TrustedProxyConfig;
 };
 
 export type SinglePortServerHandle = {
@@ -52,6 +54,7 @@ export const startSinglePortServer = async ({
   registry,
   streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
   token,
+  trustedProxies,
 }: SinglePortServerOptions): Promise<SinglePortServerHandle> => {
   const controlPath = normalizeControlPath(inputControlPath);
   const upgradeSockets = new Set<Duplex>();
@@ -78,8 +81,13 @@ export const startSinglePortServer = async ({
       request,
       response,
       streamTimeoutMs,
+      trustedProxies,
     });
   });
+  server.headersTimeout = 10_000;
+  server.requestTimeout = 0;
+  server.keepAliveTimeout = 5_000;
+  server.maxHeadersCount = 100;
 
   server.on("upgrade", (request, socket, head) => {
     if (pathnameOf(request.url) === controlPath) {
@@ -101,6 +109,7 @@ export const startSinglePortServer = async ({
         upgradeSocket.once("close", () => upgradeSockets.delete(upgradeSocket));
       },
       registry,
+      trustedProxies,
     });
   });
 

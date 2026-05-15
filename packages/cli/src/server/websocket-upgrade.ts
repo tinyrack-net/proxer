@@ -1,19 +1,31 @@
 import type http from "node:http";
 import type { Duplex } from "node:stream";
-import { normalizeWebSocketUpgradeHeaders } from "#app/lib/headers.ts";
+import {
+  applyForwardedHeaders,
+  normalizeWebSocketUpgradeHeaders,
+} from "#app/lib/headers.ts";
 import { createStreamId } from "#app/lib/ids.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
+import {
+  getRequestContext,
+  type RequestContext,
+} from "#app/server/request-context.ts";
 import {
   parseTunnelRouteFromHost,
   type TunnelRoute,
 } from "#app/server/route-target.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
+import {
+  parseTrustedProxyValues,
+  type TrustedProxyConfig,
+} from "#app/server/trusted-proxies.ts";
 
 export type WebSocketUpgradeHandlerOptions = {
   readonly domain?: string;
   readonly registry: TunnelRegistry;
   readonly onSocket?: (socket: Duplex) => void;
+  readonly trustedProxies?: TrustedProxyConfig;
 };
 
 const getHostValue = (host: string | string[] | undefined): string => {
@@ -43,11 +55,13 @@ const encodeData = (chunk: Buffer): string => {
 const proxyWebSocketUpgrade = ({
   connection,
   head,
+  requestContext,
   request,
   socket,
 }: {
   readonly connection: TunnelConnection;
   readonly head: Buffer;
+  readonly requestContext: RequestContext;
   readonly request: http.IncomingMessage;
   readonly socket: Duplex;
 }): void => {
@@ -132,7 +146,10 @@ const proxyWebSocketUpgrade = ({
   socket.on("error", onSocketError);
 
   sendFrame({
-    headers: normalizeWebSocketUpgradeHeaders(request.headers),
+    headers: applyForwardedHeaders(
+      normalizeWebSocketUpgradeHeaders(request.headers),
+      requestContext,
+    ),
     kind: "websocket",
     method: request.method ?? "GET",
     path: request.url ?? "/",
@@ -148,14 +165,25 @@ export const handlePublicWebSocketUpgrade = (
   request: http.IncomingMessage,
   socket: Duplex,
   head: Buffer,
-  { domain, onSocket, registry }: WebSocketUpgradeHandlerOptions,
+  {
+    domain,
+    onSocket,
+    registry,
+    trustedProxies = parseTrustedProxyValues([]),
+  }: WebSocketUpgradeHandlerOptions,
 ): void => {
   onSocket?.(socket);
-  const route = parseTunnelRouteFromHost(request.headers.host, domain);
+  const requestContext = getRequestContext({
+    defaultProtocol: "http",
+    headers: request.headers,
+    remoteAddress: request.socket.remoteAddress,
+    trustedProxies,
+  });
+  const route = parseTunnelRouteFromHost(requestContext.host, domain);
   if (!route) {
     writeNotFoundResponse(
       socket,
-      `No tunnel route matched host ${getHostValue(request.headers.host) || "missing host"}`,
+      `No tunnel route matched host ${getHostValue(requestContext.host) || "missing host"}`,
     );
     return;
   }
@@ -172,6 +200,7 @@ export const handlePublicWebSocketUpgrade = (
   proxyWebSocketUpgrade({
     connection: tunnel.connection,
     head,
+    requestContext,
     request,
     socket,
   });

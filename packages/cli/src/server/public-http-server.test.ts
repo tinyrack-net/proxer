@@ -5,6 +5,7 @@ import type { DataFrame, TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import { startPublicHttpServer } from "#app/server/public-http-server.ts";
 import { TunnelRegistry } from "#app/server/stream-registry.ts";
+import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
 
@@ -237,6 +238,87 @@ describe("public HTTP server", () => {
 
     expect(response.status).toBe(404);
     expect(connection.sent).toEqual([]);
+  });
+
+  it("does not route untrusted forwarded hosts", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      domain: "proxy.example.com",
+      registry,
+    });
+    handles.push(handle);
+
+    const response = await requestPublic({
+      headers: {
+        host: "attacker.example.com",
+        "x-forwarded-host": "demo.proxy.example.com",
+      },
+      url: handle.url,
+    });
+
+    expect(response.status).toBe(404);
+    expect(connection.sent).toEqual([]);
+  });
+
+  it("routes trusted forwarded hosts and forwards canonical headers", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      domain: "proxy.example.com",
+      registry,
+      trustedProxies: parseTrustedProxyValues(["loopback"]),
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: {
+        host: "attacker.example.com",
+        "x-forwarded-for": "203.0.113.10",
+        "x-forwarded-host": "demo.proxy.example.com",
+        "x-forwarded-proto": "https",
+        "x-real-ip": "203.0.113.11",
+      },
+      url: handle.url,
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+
+    expect(openFrame).toMatchObject({
+      headers: {
+        host: "attacker.example.com",
+        "x-forwarded-for": "203.0.113.10",
+        "x-forwarded-host": "demo.proxy.example.com",
+        "x-forwarded-proto": "https",
+      },
+    });
+    if (openFrame.type !== "open") {
+      throw new Error("expected open frame");
+    }
+    connection.emitFrame({
+      headers: {},
+      status: 200,
+      streamId: openFrame.streamId,
+      type: "headers",
+    });
+    connection.emitFrame({
+      direction: "response",
+      streamId: openFrame.streamId,
+      type: "end",
+    });
+
+    await expect(responsePromise).resolves.toMatchObject({ status: 200 });
   });
 
   it("opens a tunnel stream for a registered host", async () => {

@@ -1,8 +1,4 @@
-import {
-  DEFAULT_CONTROL_PATH,
-  DEFAULT_HTTP_SERVER_URL,
-  DEFAULT_LISTEN_ADDRESS,
-} from "#app/config/constants.ts";
+import { DEFAULT_CONTROL_PATH } from "#app/config/constants.ts";
 
 export const tokenFlag = {
   kind: "parsed" as const,
@@ -16,7 +12,7 @@ export const serverListenFlag = {
   parse: (input: string) => input,
   brief: "Single HTTP/WebSocket listener address.",
   placeholder: "host:port",
-  default: DEFAULT_LISTEN_ADDRESS,
+  optional: true as const,
 };
 
 export const controlPathFlag = {
@@ -32,7 +28,7 @@ export const httpServerFlag = {
   parse: (input: string) => input,
   brief: "Tunnel server base URL.",
   placeholder: "ws://host:port",
-  default: DEFAULT_HTTP_SERVER_URL,
+  optional: true as const,
 };
 
 export const serverDomainFlag = {
@@ -49,4 +45,13 @@ export const httpSubdomainFlag = {
   brief: "Subdomain used for host routing.",
   placeholder: "subdomain",
   optional: true as const,
+};
+
+export const trustedProxyFlag = {
+  kind: "parsed" as const,
+  parse: (input: string) => input,
+  brief: "Trusted reverse proxy IP, CIDR, or preset.",
+  placeholder: "proxy",
+  optional: true as const,
+  variadic: true as const,
 };

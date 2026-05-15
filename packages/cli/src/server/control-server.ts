@@ -2,6 +2,7 @@ import http from "node:http";
 import { WebSocketServer } from "ws";
 import { formatHostPort, type HostPort } from "#app/lib/address.ts";
 import { ProxerError } from "#app/lib/error.ts";
+import { secureCompare } from "#app/lib/secure-compare.ts";
 import type { RegisterFrame } from "#app/protocol/frame.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import type { TunnelRoute } from "#app/server/route-target.ts";
@@ -69,7 +70,7 @@ export const createControlWebSocketServer = ({
         return;
       }
 
-      if (token !== undefined && frame.token !== token) {
+      if (token !== undefined && !secureCompare(token, frame.token)) {
         void connection.close(1008, "Invalid tunnel token");
         return;
       }

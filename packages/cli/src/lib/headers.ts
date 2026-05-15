@@ -1,6 +1,12 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { HeaderMap } from "#app/protocol/frame.ts";
 
+type ForwardedHeaderContext = {
+  readonly clientIp: string;
+  readonly host: string | undefined;
+  readonly protocol: "http" | "https";
+};
+
 const HTTP_HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "keep-alive",
@@ -66,6 +72,38 @@ export const normalizeWebSocketUpgradeHeaders = (
   headers: IncomingHttpHeaders,
 ): HeaderMap => {
   return normalizeIncomingHeaders(headers);
+};
+
+export const applyForwardedHeaders = (
+  headers: HeaderMap,
+  context: ForwardedHeaderContext,
+): HeaderMap => {
+  const normalized: HeaderMap = {};
+
+  for (const [name, value] of Object.entries(headers)) {
+    const normalizedName = name.toLowerCase();
+    if (
+      normalizedName === "forwarded" ||
+      normalizedName === "x-forwarded-for" ||
+      normalizedName === "x-forwarded-host" ||
+      normalizedName === "x-forwarded-proto" ||
+      normalizedName === "x-real-ip"
+    ) {
+      continue;
+    }
+
+    normalized[normalizedName] = value;
+  }
+
+  if (context.clientIp) {
+    normalized["x-forwarded-for"] = context.clientIp;
+  }
+  if (context.host) {
+    normalized["x-forwarded-host"] = context.host;
+  }
+  normalized["x-forwarded-proto"] = context.protocol;
+
+  return normalized;
 };
 
 export const serializeHeadersForRawHttp = (headers: HeaderMap): string => {

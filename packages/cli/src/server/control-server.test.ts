@@ -148,6 +148,61 @@ describe("control server", () => {
     ).toBeUndefined();
   });
 
+  it("registers a client with the correct token", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+      token: "expected-token",
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    socket.send(
+      encodeFrame({
+        type: "register",
+        subdomain: "demo",
+        token: "expected-token",
+      }),
+    );
+
+    await expect(nextMessage(socket)).resolves.toEqual({
+      type: "registered",
+      subdomain: "demo",
+    });
+  });
+
+  it("rejects a different-length tunnel token without throwing", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+      token: "expected-token",
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+    const close = new Promise<{ code: number; reason: string }>((resolve) => {
+      socket.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString("utf8") }),
+      );
+    });
+
+    socket.send(
+      encodeFrame({
+        type: "register",
+        subdomain: "demo",
+        token: "short",
+      }),
+    );
+
+    await expect(close).resolves.toEqual({
+      code: 1008,
+      reason: "Invalid tunnel token",
+    });
+  });
+
   it("rejects duplicate tunnel subdomains", async () => {
     const registry = new TunnelRegistry();
     const handle = await startControlServer({

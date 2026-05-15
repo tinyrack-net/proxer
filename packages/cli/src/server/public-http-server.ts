@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import { formatHostPort, type HostPort } from "#app/lib/address.ts";
 import { ProxerError } from "#app/lib/error.ts";
 import {
+  applyForwardedHeaders,
   normalizeIncomingHeaders,
   stripHttpHopByHopHeaders,
 } from "#app/lib/headers.ts";
@@ -10,10 +11,18 @@ import { createStreamId } from "#app/lib/ids.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import {
+  getRequestContext,
+  type RequestContext,
+} from "#app/server/request-context.ts";
+import {
   parseTunnelRouteFromHost,
   type TunnelRoute,
 } from "#app/server/route-target.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
+import {
+  parseTrustedProxyValues,
+  type TrustedProxyConfig,
+} from "#app/server/trusted-proxies.ts";
 import { attachWebSocketUpgradeHandler } from "#app/server/websocket-upgrade.ts";
 
 export type PublicHttpServerOptions = {
@@ -21,6 +30,7 @@ export type PublicHttpServerOptions = {
   readonly domain?: string;
   readonly registry: TunnelRegistry;
   readonly streamTimeoutMs?: number;
+  readonly trustedProxies?: TrustedProxyConfig;
 };
 
 export type PublicHttpServerHandle = {
@@ -144,11 +154,13 @@ const handleTunnelFrame = ({
 
 const proxyHttpRequest = ({
   connection,
+  requestContext,
   request,
   response,
   streamTimeoutMs,
 }: {
   readonly connection: TunnelConnection;
+  readonly requestContext: RequestContext;
   readonly request: http.IncomingMessage;
   readonly response: http.ServerResponse;
   readonly streamTimeoutMs: number;
@@ -253,8 +265,9 @@ const proxyHttpRequest = ({
   });
 
   sendFrame({
-    headers: stripHttpHopByHopHeaders(
-      normalizeIncomingHeaders(request.headers),
+    headers: applyForwardedHeaders(
+      stripHttpHopByHopHeaders(normalizeIncomingHeaders(request.headers)),
+      requestContext,
     ),
     kind: "http",
     method: request.method ?? "GET",
@@ -270,16 +283,24 @@ export const handlePublicHttpRequest = ({
   request,
   response,
   streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
+  trustedProxies = parseTrustedProxyValues([]),
 }: {
   readonly domain?: string;
   readonly registry: TunnelRegistry;
   readonly request: http.IncomingMessage;
   readonly response: http.ServerResponse;
   readonly streamTimeoutMs?: number;
+  readonly trustedProxies?: TrustedProxyConfig;
 }): void => {
-  const route = parseTunnelRouteFromHost(request.headers.host, domain);
+  const requestContext = getRequestContext({
+    defaultProtocol: "http",
+    headers: request.headers,
+    remoteAddress: request.socket.remoteAddress,
+    trustedProxies,
+  });
+  const route = parseTunnelRouteFromHost(requestContext.host, domain);
   if (!route) {
-    endWithNoRoute(response, request.headers.host);
+    endWithNoRoute(response, requestContext.host);
     return;
   }
 
@@ -291,6 +312,7 @@ export const handlePublicHttpRequest = ({
 
   proxyHttpRequest({
     connection: tunnel.connection,
+    requestContext,
     request,
     response,
     streamTimeoutMs,
@@ -302,6 +324,7 @@ export const startPublicHttpServer = async ({
   domain,
   registry,
   streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
+  trustedProxies = parseTrustedProxyValues([]),
 }: PublicHttpServerOptions): Promise<PublicHttpServerHandle> => {
   const upgradeSockets = new Set<Duplex>();
   const server = http.createServer((request, response) => {
@@ -311,6 +334,7 @@ export const startPublicHttpServer = async ({
       request,
       response,
       streamTimeoutMs,
+      trustedProxies,
     });
   });
   attachWebSocketUpgradeHandler(server, {
@@ -320,6 +344,7 @@ export const startPublicHttpServer = async ({
     },
     domain,
     registry,
+    trustedProxies,
   });
 
   await listen(server, address);

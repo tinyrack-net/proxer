@@ -16,6 +16,7 @@ import {
 
 export type ProxerCommandContext = CommandContext & {
   readonly logger: TerminalLogger;
+  readonly env?: Record<string, string | undefined>;
 };
 
 export type RunCliOptions = StricliProcess;
@@ -57,6 +58,7 @@ export const runCli = async (
     process,
     forCommand() {
       return {
+        env: process.env,
         process,
         logger: createTerminalLogger(process.stdout, process.stderr),
       };

@@ -1,6 +1,7 @@
 import type { IncomingHttpHeaders } from "node:http";
 import { describe, expect, it } from "vitest";
 import {
+  applyForwardedHeaders,
   normalizeIncomingHeaders,
   normalizeWebSocketUpgradeHeaders,
   serializeHeadersForRawHttp,
@@ -67,5 +68,30 @@ describe("header utilities", () => {
         "set-cookie": ["a=1", "b=2"],
       }),
     ).toBe("host: demo.localhost\r\nset-cookie: a=1\r\nset-cookie: b=2\r\n");
+  });
+
+  it("strips spoofed forwarded headers and applies canonical values", () => {
+    expect(
+      applyForwardedHeaders(
+        {
+          forwarded: "for=203.0.113.1",
+          host: "demo.localhost",
+          "x-forwarded-for": "spoofed",
+          "x-forwarded-host": "spoofed.example.com",
+          "x-forwarded-proto": "https",
+          "x-real-ip": "spoofed",
+        },
+        {
+          clientIp: "198.51.100.10",
+          host: "demo.localhost",
+          protocol: "http",
+        },
+      ),
+    ).toEqual({
+      host: "demo.localhost",
+      "x-forwarded-for": "198.51.100.10",
+      "x-forwarded-host": "demo.localhost",
+      "x-forwarded-proto": "http",
+    });
   });
 });
