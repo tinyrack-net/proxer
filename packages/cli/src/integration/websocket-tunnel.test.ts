@@ -29,6 +29,17 @@ const waitForMessage = async (
   });
 };
 
+const waitForClose = async (socket: WebSocket): Promise<void> => {
+  if (socket.readyState === WebSocket.CLOSED) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    socket.once("close", () => resolve());
+    socket.once("error", reject);
+  });
+};
+
 describe("WebSocket tunnel integration", () => {
   const cleanups: Array<() => Promise<void>> = [];
 
@@ -39,7 +50,15 @@ describe("WebSocket tunnel integration", () => {
   });
 
   it("proxies text and binary websocket messages through the full tunnel", async () => {
-    const localWebSocketServer = await createLocalWebSocketEchoServer();
+    let resolveLocalConnectionClosed: () => void = () => {};
+    const localConnectionClosed = new Promise<void>((resolve) => {
+      resolveLocalConnectionClosed = resolve;
+    });
+    const localWebSocketServer = await createLocalWebSocketEchoServer({
+      onConnectionClosed() {
+        resolveLocalConnectionClosed();
+      },
+    });
     cleanups.push(() => localWebSocketServer.close());
     const proxerServer = await startServer({
       controlAddress: randomAddress,
@@ -80,5 +99,9 @@ describe("WebSocket tunnel integration", () => {
     const binaryMessage = await waitForMessage(publicSocket);
     expect(binaryMessage.isBinary).toBe(true);
     expect(binaryMessage.data).toEqual(Buffer.from([1, 2, 3]));
+
+    publicSocket.close();
+    await waitForClose(publicSocket);
+    await localConnectionClosed;
   });
 });

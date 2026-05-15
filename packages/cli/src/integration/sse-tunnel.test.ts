@@ -70,8 +70,12 @@ describe("SSE tunnel integration", () => {
   });
 
   it("streams SSE chunks through the full tunnel without buffering", async () => {
+    let localResponseEnded = false;
     let secondEventWritten = false;
     const localSseServer = await createLocalSseServer({
+      onResponseEnded() {
+        localResponseEnded = true;
+      },
       onSecondEventWritten() {
         secondEventWritten = true;
       },
@@ -95,6 +99,7 @@ describe("SSE tunnel integration", () => {
     const observedFirstChunk = await firstChunk;
 
     expect(observedFirstChunk).toBe("data: one\n\n");
+    expect(localResponseEnded).toBe(false);
     expect(secondEventWritten).toBe(false);
 
     const response = await fullResponse;

@@ -5,6 +5,7 @@ import type { HostPort } from "#app/lib/address.ts";
 export type LocalSseServerOptions = {
   readonly secondEventDelayMs?: number;
   readonly onFirstEventWritten?: () => void;
+  readonly onResponseEnded?: () => void;
   readonly onSecondEventWritten?: () => void;
 };
 
@@ -42,6 +43,7 @@ export const listenOnRandomPort = async (
 
 export const createLocalSseServer = async ({
   onFirstEventWritten,
+  onResponseEnded,
   onSecondEventWritten,
   secondEventDelayMs = 50,
 }: LocalSseServerOptions = {}): Promise<{
@@ -69,6 +71,7 @@ export const createLocalSseServer = async ({
       response.write("data: two\n\n");
       onSecondEventWritten?.();
       response.end();
+      onResponseEnded?.();
     }, secondEventDelayMs);
     timers.add(timer);
   });
@@ -88,7 +91,13 @@ export const createLocalSseServer = async ({
   };
 };
 
-export const createLocalWebSocketEchoServer = async (): Promise<{
+export type LocalWebSocketEchoServerOptions = {
+  readonly onConnectionClosed?: () => void;
+};
+
+export const createLocalWebSocketEchoServer = async ({
+  onConnectionClosed,
+}: LocalWebSocketEchoServerOptions = {}): Promise<{
   readonly url: string;
   readonly port: number;
   close(): Promise<void>;
@@ -99,6 +108,9 @@ export const createLocalWebSocketEchoServer = async (): Promise<{
   webSocketServer.on("connection", (socket) => {
     socket.on("message", (data, isBinary) => {
       socket.send(data, { binary: isBinary });
+    });
+    socket.on("close", () => {
+      onConnectionClosed?.();
     });
   });
 
