@@ -1,0 +1,32 @@
+---
+title: Routing and Trusted Proxies
+description: Route root and subdomain hosts, including deployments behind reverse proxies.
+---
+
+Proxer routes public requests by the incoming host.
+
+- A client without `--subdomain` registers the configured root domain.
+- A client with `--subdomain demo` registers `demo.<domain>`.
+- Unknown subdomains return `404`.
+
+When Proxer runs behind Traefik or another reverse proxy, configure the TCP peer addresses that may supply `X-Forwarded-*` headers. Without trusted proxies, Proxer ignores forwarded host, protocol, and client IP headers for routing.
+
+```bash
+PROXER_LISTEN=0.0.0.0:8080 \
+PROXER_DOMAIN=proxy.intranet.example.com \
+PROXER_TRUSTED_PROXIES=private,loopback \
+PROXER_TOKEN=... \
+proxer server
+```
+
+Example client configuration through the proxy:
+
+```bash
+PROXER_SERVER=wss://proxy.intranet.example.com \
+PROXER_CONTROL_PATH=/__proxer_control_7f3d9a2b__ \
+PROXER_SUBDOMAIN=demo \
+PROXER_TOKEN=... \
+proxer http 3000
+```
+
+Supported trusted proxy values are `loopback`, `private`, IP literals, and CIDR ranges. Only trust reverse proxies you control.

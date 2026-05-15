@@ -1,0 +1,21 @@
+---
+title: proxer http
+description: トンネル経由でローカルHTTPサービスを公開します。
+---
+
+`proxer http <port>`は、クライアント開始のトンネルを公開Proxerサーバーへ接続し、リクエストをローカルHTTPポートへ転送します。
+
+```bash
+proxer http 3000 --server ws://your-server.example.com:8080 --subdomain demo --token dev-token
+```
+
+| CLI flag | Environment variable | Default |
+| --- | --- | --- |
+| `--server <url>` | `PROXER_SERVER` | `ws://127.0.0.1:8080` |
+| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
+| `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | unset |
+| `--token <token>` | `PROXER_TOKEN` | unset |
+
+ローカルポートは位置引数で、環境変数はありません。
+
+通常のHTTPデプロイでは`ws://`を使い、公開エンドポイントまたはreverse proxyでTLSを終端する場合は`wss://`を使います。

@@ -1,0 +1,32 @@
+---
+title: ルーティングと信頼プロキシ
+description: ルートおよびサブドメインホストをルーティングし、reverse proxy背後で運用します。
+---
+
+Proxerは受信したホストに基づいて公開リクエストをルーティングします。
+
+- `--subdomain`なしのクライアントは設定されたルートドメインを登録します。
+- `--subdomain demo`を使うクライアントは`demo.<domain>`を登録します。
+- 未知のサブドメインは`404`を返します。
+
+ProxerをTraefikなどのreverse proxy背後で実行する場合は、`X-Forwarded-*`ヘッダーを提供できるTCP peerアドレスを設定します。信頼プロキシがない場合、Proxerはルーティング用に転送されたhost、protocol、client IPヘッダーを無視します。
+
+```bash
+PROXER_LISTEN=0.0.0.0:8080 \
+PROXER_DOMAIN=proxy.intranet.example.com \
+PROXER_TRUSTED_PROXIES=private,loopback \
+PROXER_TOKEN=... \
+proxer server
+```
+
+プロキシ経由のクライアント設定例です。
+
+```bash
+PROXER_SERVER=wss://proxy.intranet.example.com \
+PROXER_CONTROL_PATH=/__proxer_control_7f3d9a2b__ \
+PROXER_SUBDOMAIN=demo \
+PROXER_TOKEN=... \
+proxer http 3000
+```
+
+信頼プロキシとして指定できる値は`loopback`、`private`、IPリテラル、CIDR範囲です。自分で管理しているreverse proxyだけを信頼してください。

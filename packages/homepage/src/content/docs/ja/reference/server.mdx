@@ -1,0 +1,33 @@
+---
+title: proxer server
+description: 単一ポートの公開およびトンネル制御リスナーを開始します。
+---
+
+`proxer server`は、公開HTTP/WebSocketリスナーとトンネル制御エンドポイントを1つのポートで開始します。
+
+```bash
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+```
+
+| CLI flag | Environment variable | Default |
+| --- | --- | --- |
+| `--listen <host:port>` | `PROXER_LISTEN` | `127.0.0.1:8080` |
+| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
+| `--domain <domain>` | `PROXER_DOMAIN` | unset |
+| `--token <token>` | `PROXER_TOKEN` | unset |
+| `--trusted-proxy <proxy>` | `PROXER_TRUSTED_PROXIES` | unset |
+
+優先順位はCLIフラグ、`PROXER_`環境変数、組み込み既定値の順です。
+
+`--trusted-proxy`は複数回指定できる単数形のフラグです。
+
+```bash
+proxer server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --trusted-proxy loopback \
+  --trusted-proxy private \
+  --token "$PROXER_TOKEN"
+```
+
+`PROXER_TRUSTED_PROXIES`は複数形で、カンマ区切りです。

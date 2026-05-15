@@ -1,0 +1,31 @@
+---
+title: 동작 방식
+description: Proxer는 공개 트래픽과 터널 제어에 하나의 리스너를 사용합니다.
+---
+
+Proxer는 하나의 HTTP/WebSocket 리스너를 사용합니다. 공개 트래픽은 이 리스너로 들어오고, 터널 클라이언트는 같은 포트의 예약된 제어 WebSocket 경로에 연결합니다.
+
+기본 제어 경로는 다음과 같습니다.
+
+```text
+/__proxer_control_7f3d9a2b__
+```
+
+일반적으로 클라이언트에서 이 경로를 직접 입력할 필요는 없습니다. 서버 기본 URL만 전달하면 Proxer가 기본 제어 경로를 내부에서 붙입니다.
+
+```text
+HTTP requests                                  -> public HTTP proxy
+WebSocket upgrade /__proxer_control_7f3d9a2b__ -> tunnel control connection
+WebSocket upgrade on any other path            -> public WebSocket proxy
+```
+
+단일 포트 모드에 TLS가 필수는 아니지만, 운영 환경에서는 보통 reverse proxy에서 TLS를 종료하고 클라이언트는 `wss://`로 연결합니다.
+
+## Health probe
+
+Kubernetes liveness 및 readiness probe는 내장 엔드포인트를 사용할 수 있습니다. 터널이나 토큰은 필요하지 않습니다.
+
+```text
+/__proxer/health/live
+/__proxer/health/ready
+```

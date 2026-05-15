@@ -1,0 +1,45 @@
+---
+title: Getting Started
+description: Start a public Proxer server and expose a local HTTP service.
+---
+
+Start the public Proxer server:
+
+```bash
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+```
+
+Start a local app on the client machine:
+
+```bash
+python3 -m http.server 3000 --bind 127.0.0.1
+```
+
+Connect a tunnel client for the root domain route:
+
+```bash
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --token dev-token
+```
+
+Then open the public listener with the configured root domain Host:
+
+```bash
+curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
+```
+
+For a subdomain route, pass `--subdomain` on the client:
+
+```bash
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --subdomain demo \
+  --token dev-token
+```
+
+```bash
+curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+```
+
+Requests for unregistered subdomains return `404`. Proxer does not route direct localhost or IP requests to a single connected client automatically.

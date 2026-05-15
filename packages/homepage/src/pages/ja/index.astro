@@ -1,0 +1,23 @@
+---
+import HomePage from "../../components/HomePage.astro";
+---
+
+<HomePage
+  actions={[
+    { href: "/ja/intro/", label: "はじめる" },
+    {
+      href: "https://github.com/tinyrack-net/proxer",
+      label: "GitHub ->",
+      variant: "secondary",
+    },
+  ]}
+  body={[
+    "公開トンネルサーバーを1つ実行します。",
+    "クライアント開始のトンネルで、プライベートなHTTP、SSE、WebSocketアプリを公開します。",
+  ].join("\n")}
+  description="HTTP、SSE、WebSocketサービス向けのセルフホスト型reverse-tunnel CLIです。"
+  keywords="cli, reverse tunnel, tunnel, websocket, sse, http proxy, self hosted, proxer, tinyrack"
+  lang="ja"
+  tagline="インバウンドなしでローカルサービスを公開。"
+  title="Proxer"
+/>
