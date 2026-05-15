@@ -33,4 +33,12 @@ export class TunnelRegistry {
   get(name: string): RegisteredTunnel | undefined {
     return this.#tunnels.get(name);
   }
+
+  getOnly(): RegisteredTunnel | undefined {
+    if (this.#tunnels.size !== 1) {
+      return undefined;
+    }
+
+    return this.#tunnels.values().next().value;
+  }
 }

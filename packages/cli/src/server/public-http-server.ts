@@ -261,7 +261,7 @@ export const handlePublicHttpRequest = ({
   readonly streamTimeoutMs?: number;
 }): void => {
   const name = getTunnelNameFromHost(request.headers.host);
-  const tunnel = registry.get(name);
+  const tunnel = registry.get(name) ?? registry.getOnly();
   if (!tunnel) {
     endWithNoTunnel(response, name);
     return;

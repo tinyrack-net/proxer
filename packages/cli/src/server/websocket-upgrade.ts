@@ -148,7 +148,7 @@ export const handlePublicWebSocketUpgrade = (
 ): void => {
   onSocket?.(socket);
   const name = getTunnelNameFromHost(request.headers.host);
-  const tunnel = registry.get(name);
+  const tunnel = registry.get(name) ?? registry.getOnly();
   if (!tunnel) {
     writeNoTunnelResponse(socket, name);
     return;

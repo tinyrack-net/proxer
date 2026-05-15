@@ -49,6 +49,7 @@ const createLocalJsonEchoServer = async (): Promise<{
 
 const requestPublicJson = async (
   publicUrl: string,
+  options: { readonly host?: string } = {},
 ): Promise<{
   readonly body: string;
   readonly headers: http.IncomingHttpHeaders;
@@ -62,7 +63,7 @@ const requestPublicJson = async (
       {
         headers: {
           "content-type": "text/plain",
-          host: "demo.localhost",
+          ...(options.host ? { host: options.host } : {}),
         },
         method: "POST",
       },
@@ -112,10 +113,38 @@ describe("HTTP tunnel integration", () => {
     });
     cleanups.push(() => tunnelClient.close());
 
-    const response = await requestPublicJson(proxerServer.publicUrl);
+    const response = await requestPublicJson(proxerServer.publicUrl, {
+      host: "demo.localhost",
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(response.body)).toEqual({
+      body: "hello world",
+      method: "POST",
+      path: "/api/hello?x=1",
+    });
+  });
+
+  it("proxies direct localhost requests to the only registered tunnel", async () => {
+    const localServer = await createLocalJsonEchoServer();
+    cleanups.push(() => localServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localServer.port,
+      name: "demo",
+      serverUrl: proxerServer.controlUrl,
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+
+    const response = await requestPublicJson(proxerServer.publicUrl);
+
+    expect(response.status).toBe(200);
     expect(JSON.parse(response.body)).toEqual({
       body: "hello world",
       method: "POST",

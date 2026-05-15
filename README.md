@@ -98,7 +98,13 @@ Start the tunnel client in a third terminal:
 mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
 ```
 
-Call the public listener with a host that maps to the tunnel name:
+Call the public listener. With exactly one registered tunnel, direct localhost/IP requests route to that tunnel:
+
+```bash
+curl http://127.0.0.1:8080/
+```
+
+You can also route explicitly by host name. The first host label maps to the tunnel name:
 
 ```bash
 curl -H 'Host: demo.localhost' http://127.0.0.1:8080/

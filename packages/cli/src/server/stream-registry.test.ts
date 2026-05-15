@@ -60,4 +60,22 @@ describe("TunnelRegistry", () => {
       connection: originalConnection,
     });
   });
+
+  it("returns the only registered tunnel as a fallback", () => {
+    const registry = new TunnelRegistry();
+    const connection = createConnection();
+
+    registry.register({ name: "demo", connection });
+
+    expect(registry.getOnly()).toEqual({ name: "demo", connection });
+  });
+
+  it("does not return a fallback when multiple tunnels are registered", () => {
+    const registry = new TunnelRegistry();
+
+    registry.register({ name: "demo", connection: createConnection() });
+    registry.register({ name: "other", connection: createConnection() });
+
+    expect(registry.getOnly()).toBeUndefined();
+  });
 });
