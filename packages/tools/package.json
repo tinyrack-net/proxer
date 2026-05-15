@@ -1,0 +1,39 @@
+{
+  "name": "@tinyrack/proxer-tools",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "bin": {
+    "proxer-tools": "./src/cli.ts"
+  },
+  "imports": {
+    "#tools/*.ts": {
+      "types": "./src/*.ts",
+      "default": "./src/*.ts"
+    },
+    "#tools/*": {
+      "types": "./src/*",
+      "default": "./src/*"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "build": "pnpm run typecheck",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@yao-pkg/pkg": "^6.19.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.5"
+  }
+}

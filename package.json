@@ -1,0 +1,23 @@
+{
+  "name": "proxer",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.3",
+  "scripts": {
+    "dev": "pnpm run --parallel -r --filter @tinyrack/* dev",
+    "build": "pnpm run -r --filter @tinyrack/* build",
+    "typecheck": "pnpm run -r --if-present --filter @tinyrack/* typecheck",
+    "test": "pnpm run -r --filter @tinyrack/* test",
+    "pkg:build": "pnpm --filter @tinyrack/proxer pkg:build",
+    "pkg:smoke": "pnpm --filter @tinyrack/proxer pkg:smoke",
+    "ci:validate": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run format:check",
+    "format": "biome format --write .",
+    "format:check": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.15"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
