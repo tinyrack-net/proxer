@@ -68,12 +68,14 @@
   "devDependencies": {
     "@tinyrack/proxer-tools": "workspace:*",
     "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.5",
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
     "vitest": "^4.1.5"
   },
   "dependencies": {
-    "@stricli/core": "^1.2.7"
+    "@stricli/core": "^1.2.7",
+    "ws": "^8.20.1"
   }
 }
