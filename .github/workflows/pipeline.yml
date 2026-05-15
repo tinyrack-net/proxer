@@ -250,7 +250,8 @@ jobs:
           --executablePath packages/cli/dist/pkg/proxer-win-x64.exe
 
       - name: Build Windows x64 MSIX
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: false # Temporarily disabled until MSIX identity secrets are configured
+        # if: startsWith(github.ref, 'refs/tags/v')
         shell: powershell
         env:
           MSIX_IDENTITY_NAME: ${{ secrets.MSIX_IDENTITY_NAME }}
@@ -260,7 +261,8 @@ jobs:
           --arch x64 --executablePath packages/cli/dist/pkg/proxer-win-x64.exe
 
       - name: Build Windows arm64 MSIX
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: false # Temporarily disabled until MSIX identity secrets are configured
+        # if: startsWith(github.ref, 'refs/tags/v')
         shell: powershell
         env:
           MSIX_IDENTITY_NAME: ${{ secrets.MSIX_IDENTITY_NAME }}
@@ -270,7 +272,8 @@ jobs:
           --arch arm64 --executablePath packages/cli/dist/pkg/proxer-win-arm64.exe
 
       - name: Smoke test MSIX alias
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: false # Temporarily disabled with MSIX packaging
+        # if: startsWith(github.ref, 'refs/tags/v')
         shell: powershell
         env:
           MSIX_IDENTITY_NAME: ${{ secrets.MSIX_IDENTITY_NAME }}
@@ -290,7 +293,8 @@ jobs:
           }
 
       - name: Bundle Windows MSIX packages
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: false # Temporarily disabled with MSIX packaging
+        # if: startsWith(github.ref, 'refs/tags/v')
         shell: powershell
         run: pnpm --filter @tinyrack/proxer-tools run cli msix bundle
 
@@ -311,7 +315,8 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Windows x64 MSIX
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: false # Temporarily disabled with MSIX packaging
+        # if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: proxer-win32-x64-msix
@@ -320,7 +325,8 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Windows arm64 MSIX
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: false # Temporarily disabled with MSIX packaging
+        # if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: proxer-win32-arm64-msix
@@ -329,7 +335,8 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Windows MSIX bundle
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: false # Temporarily disabled with MSIX packaging
+        # if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: proxer-windows-msixbundle
