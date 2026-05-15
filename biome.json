@@ -17,9 +17,11 @@
     "includes": [
       "**",
       "!**/.opencode",
+      "!**/.astro",
       "!**/coverage",
       "!**/dist",
-      "!**/node_modules"
+      "!**/node_modules",
+      "!packages/homepage/src/**/*.astro"
     ]
   },
   "javascript": {

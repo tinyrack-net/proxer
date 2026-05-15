@@ -1,0 +1,45 @@
+---
+title: 시작하기
+description: 공개 Proxer 서버를 시작하고 로컬 HTTP 서비스를 노출합니다.
+---
+
+공개 Proxer 서버를 시작합니다.
+
+```bash
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+```
+
+클라이언트 머신에서 로컬 앱을 시작합니다.
+
+```bash
+python3 -m http.server 3000 --bind 127.0.0.1
+```
+
+루트 도메인 경로로 터널 클라이언트를 연결합니다.
+
+```bash
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --token dev-token
+```
+
+설정한 루트 도메인 `Host`로 공개 리스너를 호출합니다.
+
+```bash
+curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
+```
+
+서브도메인 경로가 필요하면 클라이언트에 `--subdomain`을 전달합니다.
+
+```bash
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --subdomain demo \
+  --token dev-token
+```
+
+```bash
+curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+```
+
+등록되지 않은 서브도메인 요청은 `404`를 반환합니다. Proxer는 localhost 또는 IP로 직접 들어온 요청을 연결된 단일 클라이언트로 자동 라우팅하지 않습니다.

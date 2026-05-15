@@ -1,0 +1,31 @@
+---
+title: 仕組み
+description: Proxerは公開トラフィックとトンネル制御に1つのリスナーを使います。
+---
+
+Proxerは1つのHTTP/WebSocketリスナーを使います。公開トラフィックはそのリスナーへ入り、トンネルクライアントは同じポート上の予約済み制御WebSocketパスへ接続します。
+
+既定の制御パス:
+
+```text
+/__proxer_control_7f3d9a2b__
+```
+
+通常、クライアント側でこのパスを入力する必要はありません。サーバーのベースURLだけを渡すと、Proxerが内部で既定の制御パスを追加します。
+
+```text
+HTTP requests                                  -> public HTTP proxy
+WebSocket upgrade /__proxer_control_7f3d9a2b__ -> tunnel control connection
+WebSocket upgrade on any other path            -> public WebSocket proxy
+```
+
+単一ポートモードにTLSは必須ではありませんが、本番環境では通常reverse proxyでTLSを終端し、クライアントは`wss://`で接続します。
+
+## Health probe
+
+Kubernetesのlivenessおよびreadiness probeは内蔵エンドポイントを利用できます。トンネルやトークンは不要です。
+
+```text
+/__proxer/health/live
+/__proxer/health/ready
+```

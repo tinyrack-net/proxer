@@ -1,0 +1,21 @@
+---
+title: proxer http
+description: Expose a local HTTP service through a tunnel.
+---
+
+`proxer http <port>` connects a client-initiated tunnel to a public Proxer server and forwards requests to a local HTTP port.
+
+```bash
+proxer http 3000 --server ws://your-server.example.com:8080 --subdomain demo --token dev-token
+```
+
+| CLI flag | Environment variable | Default |
+| --- | --- | --- |
+| `--server <url>` | `PROXER_SERVER` | `ws://127.0.0.1:8080` |
+| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
+| `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | unset |
+| `--token <token>` | `PROXER_TOKEN` | unset |
+
+The local port is positional and does not have an environment variable.
+
+Use `ws://` for plain HTTP deployments and `wss://` when TLS is terminated by the public endpoint or reverse proxy.

@@ -1,0 +1,33 @@
+---
+title: proxer server
+description: 단일 포트 공개 및 터널 제어 리스너를 시작합니다.
+---
+
+`proxer server`는 공개 HTTP/WebSocket 리스너와 터널 제어 엔드포인트를 하나의 포트에서 시작합니다.
+
+```bash
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+```
+
+| CLI flag | Environment variable | Default |
+| --- | --- | --- |
+| `--listen <host:port>` | `PROXER_LISTEN` | `127.0.0.1:8080` |
+| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
+| `--domain <domain>` | `PROXER_DOMAIN` | unset |
+| `--token <token>` | `PROXER_TOKEN` | unset |
+| `--trusted-proxy <proxy>` | `PROXER_TRUSTED_PROXIES` | unset |
+
+우선순위는 CLI 플래그, `PROXER_` 환경 변수, 내장 기본값 순서입니다.
+
+`--trusted-proxy`는 여러 번 사용할 수 있는 단수형 플래그입니다.
+
+```bash
+proxer server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --trusted-proxy loopback \
+  --trusted-proxy private \
+  --token "$PROXER_TOKEN"
+```
+
+`PROXER_TRUSTED_PROXIES`는 복수형이며 쉼표로 구분합니다.

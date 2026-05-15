@@ -1,0 +1,45 @@
+---
+title: はじめに
+description: 公開Proxerサーバーを開始し、ローカルHTTPサービスを公開します。
+---
+
+公開Proxerサーバーを開始します。
+
+```bash
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+```
+
+クライアントマシンでローカルアプリを開始します。
+
+```bash
+python3 -m http.server 3000 --bind 127.0.0.1
+```
+
+ルートドメイン経路のトンネルクライアントを接続します。
+
+```bash
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --token dev-token
+```
+
+設定したルートドメインの`Host`で公開リスナーを開きます。
+
+```bash
+curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
+```
+
+サブドメイン経路を使う場合は、クライアントに`--subdomain`を渡します。
+
+```bash
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --subdomain demo \
+  --token dev-token
+```
+
+```bash
+curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+```
+
+未登録のサブドメインへのリクエストは`404`を返します。ProxerはlocalhostやIPへの直接リクエストを、接続済みの単一クライアントへ自動的にはルーティングしません。

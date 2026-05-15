@@ -1,0 +1,32 @@
+---
+title: Proxer
+description: HTTP, SSE, WebSocket 서비스를 위한 셀프 호스팅 reverse tunnel입니다.
+---
+
+Proxer는 셀프 호스팅 개발 환경과 사설 인프라를 위한 ngrok/Pinggy 스타일 reverse tunnel입니다.
+
+공개 Proxer 서버 하나를 실행한 뒤, 사설 네트워크의 터널 클라이언트를 연결합니다. 공개 HTTP 요청, Server-Sent Events, WebSocket 업그레이드는 클라이언트가 시작한 영구 WebSocket 제어 연결을 통해 전달되므로 로컬 서비스가 인터넷 인바운드 트래픽을 직접 받을 필요가 없습니다.
+
+## 기능
+
+- 공개 트래픽과 터널 제어를 처리하는 단일 포트 서버
+- 일반 응답과 장시간 응답을 위한 HTTP 스트리밍 프록시
+- 응답 본문을 버퍼링하지 않는 Server-Sent Events 지원
+- 실시간 앱을 위한 WebSocket 업그레이드 프록시
+- NAT 또는 사설 네트워크에서도 동작하는 클라이언트 시작 터널
+- 명시적인 공개 호스트를 위한 서브도메인 및 루트 도메인 라우팅
+- Node.js CLI에서 빌드되는 독립 실행 파일
+
+## 설치
+
+```bash
+npm install -g @tinyrack/proxer
+```
+
+```bash
+brew install tinyrack-net/tap/proxer
+```
+
+사전 빌드된 독립 실행 파일은 [GitHub Releases](https://github.com/tinyrack-net/proxer/releases)에서 제공됩니다.
+
+OCI 이미지는 `tinyrack/proxer` 및 `ghcr.io/tinyrack-net/proxer`로 게시됩니다.

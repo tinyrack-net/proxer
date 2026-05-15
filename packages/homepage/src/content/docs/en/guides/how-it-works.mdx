@@ -1,0 +1,31 @@
+---
+title: How It Works
+description: Proxer uses one listener for public traffic and tunnel control.
+---
+
+Proxer uses one HTTP/WebSocket listener. Public traffic enters through that listener, while tunnel clients connect to a reserved control WebSocket path on the same port.
+
+Default control path:
+
+```text
+/__proxer_control_7f3d9a2b__
+```
+
+You normally do not need to type this path on the client. Pass only the server base URL and Proxer appends the default control path internally.
+
+```text
+HTTP requests                                  -> public HTTP proxy
+WebSocket upgrade /__proxer_control_7f3d9a2b__ -> tunnel control connection
+WebSocket upgrade on any other path            -> public WebSocket proxy
+```
+
+TLS is not required for single-port mode, but production deployments should usually terminate TLS at a reverse proxy and connect clients with `wss://`.
+
+## Health probes
+
+Kubernetes liveness and readiness probes can use built-in endpoints. They do not require a tunnel or token:
+
+```text
+/__proxer/health/live
+/__proxer/health/ready
+```

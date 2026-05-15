@@ -1,0 +1,33 @@
+---
+title: proxer server
+description: Start a single-port public and tunnel control listener.
+---
+
+`proxer server` starts the public HTTP/WebSocket listener and the tunnel control endpoint on one port.
+
+```bash
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+```
+
+| CLI flag | Environment variable | Default |
+| --- | --- | --- |
+| `--listen <host:port>` | `PROXER_LISTEN` | `127.0.0.1:8080` |
+| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
+| `--domain <domain>` | `PROXER_DOMAIN` | unset |
+| `--token <token>` | `PROXER_TOKEN` | unset |
+| `--trusted-proxy <proxy>` | `PROXER_TRUSTED_PROXIES` | unset |
+
+CLI flags have highest precedence, then `PROXER_` environment variables, then built-in defaults.
+
+`--trusted-proxy` is a singular repeatable flag:
+
+```bash
+proxer server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --trusted-proxy loopback \
+  --trusted-proxy private \
+  --token "$PROXER_TOKEN"
+```
+
+`PROXER_TRUSTED_PROXIES` is plural and comma-separated.
