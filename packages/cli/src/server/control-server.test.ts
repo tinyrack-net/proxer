@@ -43,6 +43,25 @@ const waitForClose = async (socket: WebSocket) => {
   });
 };
 
+const waitForCondition = async (
+  predicate: () => boolean,
+  timeoutMs = 1_000,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  if (!predicate()) {
+    throw new Error("Timed out waiting for condition");
+  }
+};
+
 describe("control server", () => {
   const handles: Array<{ close(): Promise<void> }> = [];
   const sockets: WebSocket[] = [];
@@ -151,6 +170,7 @@ describe("control server", () => {
     await nextMessage(socket);
     socket.close();
     await waitForClose(socket);
+    await waitForCondition(() => registry.get("demo") === undefined);
 
     expect(registry.get("demo")).toBeUndefined();
   });
