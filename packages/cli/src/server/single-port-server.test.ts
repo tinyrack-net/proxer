@@ -1,7 +1,9 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
+import { type RawData, WebSocket } from "ws";
 import type { HostPort } from "#app/lib/address.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
+import { decodeFrame, encodeFrame } from "#app/protocol/frame-codec.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import { startSinglePortServer } from "#app/server/single-port-server.ts";
 import { TunnelRegistry } from "#app/server/stream-registry.ts";
@@ -64,10 +66,61 @@ const requestSinglePort = async ({
   });
 };
 
+const controlWebSocketUrl = (publicUrl: string, path: string): string => {
+  const url = new URL(path, publicUrl);
+  url.protocol = "ws:";
+  return url.toString();
+};
+
+const openWebSocket = async (url: string): Promise<WebSocket> => {
+  const socket = new WebSocket(url);
+  await new Promise<void>((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+  return socket;
+};
+
+const nextMessage = async (socket: WebSocket): Promise<TunnelFrame> => {
+  const data = await new Promise<RawData>((resolve) => {
+    socket.once("message", resolve);
+  });
+
+  if (Buffer.isBuffer(data)) {
+    return decodeFrame(data);
+  }
+
+  if (Array.isArray(data)) {
+    return decodeFrame(Buffer.concat(data));
+  }
+
+  return decodeFrame(Buffer.from(new Uint8Array(data)));
+};
+
+const waitForClose = async (socket: WebSocket): Promise<void> => {
+  await new Promise<void>((resolve) => {
+    if (socket.readyState === WebSocket.CLOSED) {
+      resolve();
+      return;
+    }
+
+    socket.once("close", () => resolve());
+  });
+};
+
 describe("single-port server health probes", () => {
   const handles: Array<{ close(): Promise<void> }> = [];
+  const sockets: WebSocket[] = [];
 
   afterEach(async () => {
+    await Promise.all(
+      sockets.splice(0).map(async (socket) => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        }
+        await waitForClose(socket);
+      }),
+    );
     await Promise.all(handles.splice(0).map((handle) => handle.close()));
   });
 
@@ -80,7 +133,7 @@ describe("single-port server health probes", () => {
     handles.push(handle);
 
     const response = await requestSinglePort({
-      path: "/__proxer/health/live",
+      path: "/__proxer__/health/live",
       url: handle.publicUrl,
     });
 
@@ -97,7 +150,7 @@ describe("single-port server health probes", () => {
     handles.push(handle);
 
     const response = await requestSinglePort({
-      path: "/__proxer/health/ready",
+      path: "/__proxer__/health/ready",
       url: handle.publicUrl,
     });
 
@@ -122,7 +175,7 @@ describe("single-port server health probes", () => {
 
     const response = await requestSinglePort({
       headers: { host: "demo.localhost" },
-      path: "/__proxer/health/live",
+      path: "/__proxer__/health/live",
       url: handle.publicUrl,
     });
 
@@ -139,7 +192,7 @@ describe("single-port server health probes", () => {
 
     const response = await requestSinglePort({
       method: "HEAD",
-      path: "/__proxer/health/ready",
+      path: "/__proxer__/health/ready",
       url: handle.publicUrl,
     });
 
@@ -157,11 +210,91 @@ describe("single-port server health probes", () => {
 
     const response = await requestSinglePort({
       method: "POST",
-      path: "/__proxer/health/live",
+      path: "/__proxer__/health/live",
       url: handle.publicUrl,
     });
 
     expect(response.status).toBe(405);
     expect(response.headers.allow).toBe("GET, HEAD");
+  });
+
+  it("returns 404 for old one-underscore health probe paths", async () => {
+    const handle = await startSinglePortServer({
+      listenAddress: randomAddress,
+      registry: new TunnelRegistry(),
+    });
+    handles.push(handle);
+
+    const response = await requestSinglePort({
+      path: "/__proxer/health/live",
+      url: handle.publicUrl,
+    });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("reserves unknown /__proxer__ internal paths from proxied traffic", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      connection,
+      route: { type: "root" },
+    });
+    const handle = await startSinglePortServer({
+      listenAddress: randomAddress,
+      registry,
+      streamTimeoutMs: 10,
+    });
+    handles.push(handle);
+
+    const response = await requestSinglePort({
+      path: "/__proxer__/api/future",
+      url: handle.publicUrl,
+    });
+
+    expect(response.status).toBe(404);
+    expect(connection.sent).toEqual([]);
+  });
+
+  it("accepts control WebSocket upgrades only on the fixed internal path", async () => {
+    const handle = await startSinglePortServer({
+      listenAddress: randomAddress,
+      registry: new TunnelRegistry(),
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(
+      controlWebSocketUrl(handle.publicUrl, "/__proxer__/control"),
+    );
+    sockets.push(socket);
+
+    socket.send(encodeFrame({ type: "register", subdomain: "demo" }));
+
+    await expect(nextMessage(socket)).resolves.toEqual({
+      type: "registered",
+      subdomain: "demo",
+    });
+    await expect(
+      openWebSocket(
+        controlWebSocketUrl(handle.publicUrl, "/__proxer_control_7f3d9a2b__"),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("returns 404 for HTTP requests to the fixed control path", async () => {
+    const handle = await startSinglePortServer({
+      listenAddress: randomAddress,
+      registry: new TunnelRegistry(),
+    });
+    handles.push(handle);
+
+    const response = await requestSinglePort({
+      path: "/__proxer__/control",
+      url: handle.publicUrl,
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.body).toContain(
+      "Control endpoint requires WebSocket upgrade",
+    );
   });
 });

@@ -5,4 +5,5 @@ export const APP_VERSION = packageJson.version;
 
 export const DEFAULT_LISTEN_ADDRESS = "127.0.0.1:8080";
 export const DEFAULT_HTTP_SERVER_URL = "ws://127.0.0.1:8080";
-export const DEFAULT_CONTROL_PATH = "/__proxer_control_7f3d9a2b__";
+export const PROXER_INTERNAL_PREFIX = "/__proxer__";
+export const CONTROL_PATH = `${PROXER_INTERNAL_PREFIX}/control`;

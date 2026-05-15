@@ -1,7 +1,8 @@
 import type http from "node:http";
+import { PROXER_INTERNAL_PREFIX } from "#app/config/constants.ts";
 
-export const HEALTH_LIVE_PATH = "/__proxer/health/live";
-export const HEALTH_READY_PATH = "/__proxer/health/ready";
+export const HEALTH_LIVE_PATH = `${PROXER_INTERNAL_PREFIX}/health/live`;
+export const HEALTH_READY_PATH = `${PROXER_INTERNAL_PREFIX}/health/ready`;
 
 type HealthProbe = "live" | "ready";
 

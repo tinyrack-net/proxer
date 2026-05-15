@@ -1,13 +1,11 @@
-import { normalizeControlPath } from "#app/lib/control-path.ts";
+import { CONTROL_PATH } from "#app/config/constants.ts";
 import { ProxerError } from "#app/lib/error.ts";
 
 export type ResolveControlServerUrlOptions = {
   readonly server: string;
-  readonly controlPath?: string;
 };
 
 export const resolveControlServerUrl = ({
-  controlPath,
   server,
 }: ResolveControlServerUrlOptions): string => {
   let url: URL;
@@ -31,18 +29,11 @@ export const resolveControlServerUrl = ({
     );
   }
 
-  const hasExplicitPath = url.pathname !== "" && url.pathname !== "/";
-  if (hasExplicitPath && controlPath !== undefined) {
-    throw new ProxerError(
-      "--server path and --control-path cannot be used together",
-    );
+  if (url.pathname !== "" && url.pathname !== "/") {
+    throw new ProxerError("--server must not include a path");
   }
 
-  if (!hasExplicitPath) {
-    url.pathname = normalizeControlPath(controlPath);
-  } else {
-    url.pathname = normalizeControlPath(url.pathname);
-  }
+  url.pathname = CONTROL_PATH;
 
   return url.toString();
 };

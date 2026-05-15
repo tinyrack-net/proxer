@@ -129,7 +129,7 @@ describe("proxer CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`public: http://127.0.0.1:${listenPort}`);
     expect(result.stdout).toContain(
-      `control: ws://127.0.0.1:${listenPort}/__proxer_control_7f3d9a2b__`,
+      `control: ws://127.0.0.1:${listenPort}/__proxer__/control`,
     );
     expect(result.stdout).toContain("server stopped");
   });
@@ -139,6 +139,15 @@ describe("proxer CLI", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("--subdomain");
+    expect(result.stdout).not.toContain("--control-path");
+    expect(result.stderr).toBe("");
+  });
+
+  it("server help does not list the removed control path flag", async () => {
+    const result = await runWithCapturedOutput(["server", "--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain("--control-path");
     expect(result.stderr).toBe("");
   });
 });

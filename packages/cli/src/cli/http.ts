@@ -3,7 +3,6 @@ import type { ProxerCommandContext } from "#app/application.ts";
 import { preferFlag, readEnvString } from "#app/cli/env.ts";
 import { runHttpClient } from "#app/cli/run.ts";
 import {
-  controlPathFlag,
   httpServerFlag,
   httpSubdomainFlag,
   tokenFlag,
@@ -14,7 +13,6 @@ import { ProxerError } from "#app/lib/error.ts";
 
 type HttpFlags = {
   readonly server?: string;
-  readonly controlPath?: string;
   readonly subdomain?: string;
   readonly token?: string;
 };
@@ -40,7 +38,6 @@ export const buildHttpCommand = () => {
     parameters: {
       flags: {
         server: httpServerFlag,
-        controlPath: controlPathFlag,
         subdomain: httpSubdomainFlag,
         token: tokenFlag,
       },
@@ -57,10 +54,6 @@ export const buildHttpCommand = () => {
     },
     async func(flags, localPort) {
       const env = this.env ?? {};
-      const controlPath = preferFlag(
-        flags.controlPath,
-        readEnvString({ env, name: "PROXER_CONTROL_PATH" }),
-      );
       const server =
         preferFlag(
           flags.server,
@@ -70,10 +63,7 @@ export const buildHttpCommand = () => {
       await runHttpClient(
         {
           localPort,
-          serverUrl: resolveControlServerUrl({
-            controlPath,
-            server,
-          }),
+          serverUrl: resolveControlServerUrl({ server }),
           subdomain: preferFlag(
             flags.subdomain,
             readEnvString({ env, name: "PROXER_SUBDOMAIN" })?.toLowerCase(),

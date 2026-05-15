@@ -1,5 +1,3 @@
-import { DEFAULT_CONTROL_PATH } from "#app/config/constants.ts";
-
 export const tokenFlag = {
   kind: "parsed" as const,
   parse: (input: string) => input,
@@ -12,14 +10,6 @@ export const serverListenFlag = {
   parse: (input: string) => input,
   brief: "Single HTTP/WebSocket listener address.",
   placeholder: "host:port",
-  optional: true as const,
-};
-
-export const controlPathFlag = {
-  kind: "parsed" as const,
-  parse: (input: string) => input,
-  brief: "Control WebSocket path.",
-  placeholder: DEFAULT_CONTROL_PATH,
   optional: true as const,
 };
 

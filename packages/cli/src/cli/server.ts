@@ -3,7 +3,6 @@ import type { ProxerCommandContext } from "#app/application.ts";
 import { preferFlag, readEnvList, readEnvString } from "#app/cli/env.ts";
 import { runServer as runServerRuntime } from "#app/cli/run.ts";
 import {
-  controlPathFlag,
   serverDomainFlag,
   serverListenFlag,
   tokenFlag,
@@ -11,11 +10,9 @@ import {
 } from "#app/cli/shared-flags.ts";
 import { DEFAULT_LISTEN_ADDRESS } from "#app/config/constants.ts";
 import { parseHostPort } from "#app/lib/address.ts";
-import { normalizeControlPath } from "#app/lib/control-path.ts";
 
 type ServerFlags = {
   readonly listen?: string;
-  readonly controlPath?: string;
   readonly domain?: string;
   readonly token?: string;
   readonly trustedProxy?: readonly string[];
@@ -29,7 +26,6 @@ export const buildServerCommand = () => {
     parameters: {
       flags: {
         listen: serverListenFlag,
-        controlPath: controlPathFlag,
         domain: serverDomainFlag,
         token: tokenFlag,
         trustedProxy: trustedProxyFlag,
@@ -42,12 +38,6 @@ export const buildServerCommand = () => {
           flags.listen,
           readEnvString({ env, name: "PROXER_LISTEN" }),
         ) ?? DEFAULT_LISTEN_ADDRESS;
-      const controlPath = normalizeControlPath(
-        preferFlag(
-          flags.controlPath,
-          readEnvString({ env, name: "PROXER_CONTROL_PATH" }),
-        ),
-      );
       const trustedProxyFlags = flags.trustedProxy ?? [];
       const trustedProxies =
         trustedProxyFlags.length > 0
@@ -56,7 +46,6 @@ export const buildServerCommand = () => {
 
       await runServerRuntime(
         {
-          controlPath,
           domain: preferFlag(
             flags.domain,
             readEnvString({ env, name: "PROXER_DOMAIN" })?.toLowerCase(),

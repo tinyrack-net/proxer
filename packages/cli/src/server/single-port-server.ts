@@ -1,7 +1,7 @@
 import http from "node:http";
 import type { Duplex } from "node:stream";
+import { CONTROL_PATH, PROXER_INTERNAL_PREFIX } from "#app/config/constants.ts";
 import { formatHostPort, type HostPort } from "#app/lib/address.ts";
-import { normalizeControlPath } from "#app/lib/control-path.ts";
 import { ProxerError } from "#app/lib/error.ts";
 import { createControlWebSocketServer } from "#app/server/control-server.ts";
 import { handleHealthProbeRequest } from "#app/server/health-probes.ts";
@@ -17,7 +17,6 @@ import { handlePublicWebSocketUpgrade } from "#app/server/websocket-upgrade.ts";
 export type SinglePortServerOptions = {
   readonly listenAddress: HostPort;
   readonly registry: TunnelRegistry;
-  readonly controlPath?: string;
   readonly domain?: string;
   readonly token?: string;
   readonly streamTimeoutMs?: number;
@@ -47,8 +46,14 @@ const pathnameOf = (url: string | undefined): string => {
   return new URL(url ?? "/", "http://localhost").pathname;
 };
 
+const isInternalPath = (pathname: string): boolean => {
+  return (
+    pathname === PROXER_INTERNAL_PREFIX ||
+    pathname.startsWith(`${PROXER_INTERNAL_PREFIX}/`)
+  );
+};
+
 export const startSinglePortServer = async ({
-  controlPath: inputControlPath,
   domain,
   listenAddress,
   registry,
@@ -56,7 +61,6 @@ export const startSinglePortServer = async ({
   token,
   trustedProxies,
 }: SinglePortServerOptions): Promise<SinglePortServerHandle> => {
-  const controlPath = normalizeControlPath(inputControlPath);
   const upgradeSockets = new Set<Duplex>();
   const controlWebSocketServer = createControlWebSocketServer({
     registry,
@@ -69,9 +73,15 @@ export const startSinglePortServer = async ({
       return;
     }
 
-    if (pathname === controlPath) {
+    if (pathname === CONTROL_PATH) {
       response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       response.end("Control endpoint requires WebSocket upgrade\n");
+      return;
+    }
+
+    if (isInternalPath(pathname)) {
+      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      response.end("Not found\n");
       return;
     }
 
@@ -90,7 +100,9 @@ export const startSinglePortServer = async ({
   server.maxHeadersCount = 100;
 
   server.on("upgrade", (request, socket, head) => {
-    if (pathnameOf(request.url) === controlPath) {
+    const pathname = pathnameOf(request.url);
+
+    if (pathname === CONTROL_PATH) {
       controlWebSocketServer.handleUpgrade(
         request,
         socket,
@@ -99,6 +111,11 @@ export const startSinglePortServer = async ({
           controlWebSocketServer.emit("connection", webSocket, request);
         },
       );
+      return;
+    }
+
+    if (isInternalPath(pathname)) {
+      socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
       return;
     }
 
@@ -116,7 +133,7 @@ export const startSinglePortServer = async ({
   await listen(server, listenAddress);
   const listeningAddress = getPublicListeningAddress(server);
   const publicUrl = `http://${formatHostPort(listeningAddress)}`;
-  const controlUrl = `ws://${formatHostPort(listeningAddress)}${controlPath}`;
+  const controlUrl = `ws://${formatHostPort(listeningAddress)}${CONTROL_PATH}`;
 
   return {
     controlUrl,

@@ -76,11 +76,11 @@ Kubernetes liveness and readiness probes can use the built-in single-port health
 ```yaml
 livenessProbe:
   httpGet:
-    path: /__proxer/health/live
+    path: /__proxer__/health/live
     port: 8080
 readinessProbe:
   httpGet:
-    path: /__proxer/health/ready
+    path: /__proxer__/health/ready
     port: 8080
 ```
 
@@ -138,7 +138,6 @@ CLI flags have highest precedence, then `PROXER_` environment variables, then bu
 | CLI flag | Environment variable | Default |
 | --- | --- | --- |
 | `--listen <host:port>` | `PROXER_LISTEN` | `127.0.0.1:8080` |
-| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
 | `--domain <domain>` | `PROXER_DOMAIN` | unset |
 | `--token <token>` | `PROXER_TOKEN` | unset |
 | `--trusted-proxy <proxy>` | `PROXER_TRUSTED_PROXIES` | unset |
@@ -148,7 +147,6 @@ CLI flags have highest precedence, then `PROXER_` environment variables, then bu
 | CLI flag | Environment variable | Default |
 | --- | --- | --- |
 | `--server <url>` | `PROXER_SERVER` | `ws://127.0.0.1:8080` |
-| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
 | `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | unset |
 | `--token <token>` | `PROXER_TOKEN` | unset |
 
@@ -193,7 +191,6 @@ Example client configuration through the proxy:
 
 ```bash
 PROXER_SERVER=wss://proxy.intranet.example.com \
-PROXER_CONTROL_PATH=/__proxer_control_7f3d9a2b__ \
 PROXER_SUBDOMAIN=demo \
 PROXER_TOKEN=... \
 proxer http 3000
@@ -203,18 +200,18 @@ proxer http 3000
 
 Proxer uses one HTTP/WebSocket listener. Public traffic enters through that listener, while tunnel clients connect to a reserved control WebSocket path on the same port.
 
-Default control path:
+Fixed control path:
 
 ```text
-/__proxer_control_7f3d9a2b__
+/__proxer__/control
 ```
 
-You normally do not need to type this path on the client. Pass only the server base URL and Proxer appends the default control path internally.
+You do not need to type this path on the client. Pass only the server base URL and Proxer appends the fixed control path internally. All `/__proxer__/*` paths are reserved for Proxer internal endpoints and are not proxied to applications.
 
 ```text
-HTTP requests                                  -> public HTTP proxy
-WebSocket upgrade /__proxer_control_7f3d9a2b__ -> tunnel control connection
-WebSocket upgrade on any other path            -> public WebSocket proxy
+HTTP requests outside /__proxer__/*          -> public HTTP proxy
+WebSocket upgrade /__proxer__/control        -> tunnel control connection
+WebSocket upgrade outside /__proxer__/*      -> public WebSocket proxy
 ```
 
 TLS is not required for single-port mode:
@@ -222,21 +219,6 @@ TLS is not required for single-port mode:
 ```text
 http://host:8080 + ws://host:8080 -> no TLS
 https://host + wss://host         -> TLS
-```
-
-For a custom deployment, set the same control path on both server and client:
-
-```bash
-proxer server \
-  --listen 127.0.0.1:8080 \
-  --control-path /_proxer/control \
-  --token dev-token
-
-proxer http 3000 \
-  --server ws://127.0.0.1:8080 \
-  --control-path /_proxer/control \
-  --subdomain demo \
-  --token dev-token
 ```
 
 ## Examples

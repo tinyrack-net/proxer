@@ -50,19 +50,19 @@ describe("CLI PROXER_ environment options", () => {
     await runCli(
       ["server"],
       createCapturedProcess({
-        PROXER_CONTROL_PATH: "/control",
         PROXER_DOMAIN: "Proxy.Example.Com",
         PROXER_LISTEN: "127.0.0.1:9090",
         PROXER_TOKEN: "secret",
+        PROXER_CONTROL_PATH: "/control",
       }),
     );
 
     expect(firstServerConfig()).toMatchObject({
-      controlPath: "/control",
       domain: "proxy.example.com",
       listenAddress: { host: "127.0.0.1", port: 9090 },
       token: "secret",
     });
+    expect(firstServerConfig()).not.toHaveProperty("controlPath");
   });
 
   it("prefers server flags over environment options", async () => {
@@ -71,8 +71,6 @@ describe("CLI PROXER_ environment options", () => {
         "server",
         "--listen",
         "127.0.0.1:8081",
-        "--control-path",
-        "/flag-control",
         "--domain",
         "Flag.Example.Com",
         "--token",
@@ -87,11 +85,11 @@ describe("CLI PROXER_ environment options", () => {
     );
 
     expect(firstServerConfig()).toMatchObject({
-      controlPath: "/flag-control",
       domain: "flag.example.com",
       listenAddress: { host: "127.0.0.1", port: 8081 },
       token: "flag-secret",
     });
+    expect(firstServerConfig()).not.toHaveProperty("controlPath");
   });
 
   it("ignores empty server environment options and keeps defaults", async () => {
@@ -104,9 +102,18 @@ describe("CLI PROXER_ environment options", () => {
     );
 
     expect(firstServerConfig()).toMatchObject({
-      controlPath: "/__proxer_control_7f3d9a2b__",
       listenAddress: { host: "127.0.0.1", port: 8080 },
     });
+    expect(firstServerConfig()).not.toHaveProperty("controlPath");
+  });
+
+  it("does not accept the removed server --control-path flag", async () => {
+    await runCli(
+      ["server", "--control-path", "/flag-control"],
+      createCapturedProcess(),
+    );
+
+    expect(mocks.runServer).not.toHaveBeenCalled();
   });
 
   it("uses HTTP client environment options when flags are omitted", async () => {
@@ -122,7 +129,7 @@ describe("CLI PROXER_ environment options", () => {
 
     expect(firstHttpConfig()).toEqual({
       localPort: 3000,
-      serverUrl: "wss://proxy.example.com/control",
+      serverUrl: "wss://proxy.example.com/__proxer__/control",
       subdomain: "demo",
       token: "secret",
     });
@@ -135,8 +142,6 @@ describe("CLI PROXER_ environment options", () => {
         "3000",
         "--server",
         "https://flag.example.com",
-        "--control-path",
-        "/flag-control",
         "--subdomain",
         "Flag",
         "--token",
@@ -152,10 +157,19 @@ describe("CLI PROXER_ environment options", () => {
 
     expect(firstHttpConfig()).toEqual({
       localPort: 3000,
-      serverUrl: "wss://flag.example.com/flag-control",
+      serverUrl: "wss://flag.example.com/__proxer__/control",
       subdomain: "flag",
       token: "flag-secret",
     });
+  });
+
+  it("does not accept the removed HTTP --control-path flag", async () => {
+    await runCli(
+      ["http", "3000", "--control-path", "/flag-control"],
+      createCapturedProcess(),
+    );
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
   });
 
   it("keeps local HTTP port positional even when environment is present", async () => {
