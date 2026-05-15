@@ -9,6 +9,9 @@ export type HttpClientConfig = {
   readonly serverUrl: string;
   readonly name: string;
   readonly token?: string;
+  readonly heartbeatIntervalMs?: number;
+  readonly heartbeatTimeoutMs?: number;
+  readonly reconnectDelayMs?: number;
 };
 
 export type RunningTunnelClient = {
@@ -27,14 +30,21 @@ const openWebSocket = async (url: string): Promise<WebSocket> => {
   return socket;
 };
 
-export const startHttpTunnelClient = async ({
-  localPort,
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
+const DEFAULT_HEARTBEAT_TIMEOUT_MS = 10_000;
+const DEFAULT_RECONNECT_DELAY_MS = 1_000;
+
+const registerConnection = async ({
+  connection,
   name,
-  serverUrl,
+  socket,
   token,
-}: HttpClientConfig): Promise<RunningTunnelClient> => {
-  const socket = await openWebSocket(serverUrl);
-  const connection = createWebSocketTunnelConnection(socket);
+}: {
+  readonly connection: ReturnType<typeof createWebSocketTunnelConnection>;
+  readonly name: string;
+  readonly socket: WebSocket;
+  readonly token?: string;
+}): Promise<void> => {
   let removeRegistrationFrameListener: () => void = () => {};
   let removeRegistrationCloseListener: () => void = () => {};
 
@@ -67,32 +77,189 @@ export const startHttpTunnelClient = async ({
         });
     });
   } catch (error) {
-    removeRegistrationFrameListener();
-    removeRegistrationCloseListener();
     socket.close();
     throw error;
+  } finally {
+    removeRegistrationFrameListener();
+    removeRegistrationCloseListener();
+  }
+};
+
+const startHeartbeat = ({
+  intervalMs,
+  socket,
+  timeoutMs,
+}: {
+  readonly intervalMs: number;
+  readonly socket: WebSocket;
+  readonly timeoutMs: number;
+}): (() => void) => {
+  if (intervalMs <= 0) {
+    return () => {};
   }
 
-  removeRegistrationFrameListener();
-  removeRegistrationCloseListener();
-  const detachLocalHttpForwarder = attachLocalHttpForwarder({
-    connection,
-    localPort,
-  });
-  const detachLocalWebSocketForwarder = attachLocalWebSocketForwarder({
-    connection,
-    localPort,
-  });
+  let heartbeatTimeout: ReturnType<typeof setTimeout> | undefined;
+  const clearHeartbeatTimeout = (): void => {
+    if (heartbeatTimeout === undefined) {
+      return;
+    }
+
+    clearTimeout(heartbeatTimeout);
+    heartbeatTimeout = undefined;
+  };
+  const onPong = (): void => {
+    clearHeartbeatTimeout();
+  };
+  const interval = setInterval(() => {
+    if (socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    if (heartbeatTimeout !== undefined) {
+      socket.terminate();
+      return;
+    }
+
+    socket.ping();
+    heartbeatTimeout = setTimeout(() => {
+      heartbeatTimeout = undefined;
+      socket.terminate();
+    }, timeoutMs);
+  }, intervalMs);
+
+  socket.on("pong", onPong);
+
+  return () => {
+    clearInterval(interval);
+    clearHeartbeatTimeout();
+    socket.off("pong", onPong);
+  };
+};
+
+type ActiveTunnelConnection = {
+  readonly connection: ReturnType<typeof createWebSocketTunnelConnection>;
+  readonly detachLocalHttpForwarder: () => void;
+  readonly detachLocalWebSocketForwarder: () => void;
+  removeLifecycleCloseListener: () => void;
+  readonly socket: WebSocket;
+  readonly stopHeartbeat: () => void;
+};
+
+export const startHttpTunnelClient = async ({
+  heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
+  heartbeatTimeoutMs = DEFAULT_HEARTBEAT_TIMEOUT_MS,
+  localPort,
+  name,
+  reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
+  serverUrl,
+  token,
+}: HttpClientConfig): Promise<RunningTunnelClient> => {
+  let activeConnection: ActiveTunnelConnection | undefined;
+  let closing = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const cleanupActiveConnection = (): void => {
+    if (!activeConnection) {
+      return;
+    }
+
+    activeConnection.removeLifecycleCloseListener();
+    activeConnection.stopHeartbeat();
+    activeConnection.detachLocalWebSocketForwarder();
+    activeConnection.detachLocalHttpForwarder();
+    activeConnection = undefined;
+  };
+
+  const connect = async (): Promise<ActiveTunnelConnection> => {
+    const socket = await openWebSocket(serverUrl);
+    const connection = createWebSocketTunnelConnection(socket);
+    await registerConnection({ connection, name, socket, token });
+    const detachLocalHttpForwarder = attachLocalHttpForwarder({
+      connection,
+      localPort,
+    });
+    const detachLocalWebSocketForwarder = attachLocalWebSocketForwarder({
+      connection,
+      localPort,
+    });
+    const stopHeartbeat = startHeartbeat({
+      intervalMs: heartbeatIntervalMs,
+      socket,
+      timeoutMs: heartbeatTimeoutMs,
+    });
+    return {
+      connection,
+      detachLocalHttpForwarder,
+      detachLocalWebSocketForwarder,
+      removeLifecycleCloseListener: () => {},
+      socket,
+      stopHeartbeat,
+    };
+  };
+
+  const activateConnection = (active: ActiveTunnelConnection): void => {
+    activeConnection = active;
+    active.removeLifecycleCloseListener = active.connection.onClose(() => {
+      if (activeConnection !== active) {
+        return;
+      }
+
+      cleanupActiveConnection();
+      scheduleReconnect();
+    });
+  };
+
+  const reconnect = async (): Promise<void> => {
+    if (closing) {
+      return;
+    }
+
+    try {
+      const nextConnection = await connect();
+      activateConnection(nextConnection);
+      if (closing) {
+        const staleConnection = nextConnection;
+        cleanupActiveConnection();
+        await staleConnection.connection.close();
+      }
+    } catch {
+      scheduleReconnect();
+    }
+  };
+
+  function scheduleReconnect(): void {
+    if (closing || reconnectTimer !== undefined) {
+      return;
+    }
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = undefined;
+      void reconnect();
+    }, reconnectDelayMs);
+  }
+
+  activateConnection(await connect());
 
   return {
     name,
     async close() {
-      detachLocalWebSocketForwarder();
-      detachLocalHttpForwarder();
-      if (socket.readyState === WebSocket.CLOSED) {
+      closing = true;
+      if (reconnectTimer !== undefined) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+
+      const connectionToClose = activeConnection;
+      cleanupActiveConnection();
+      if (!connectionToClose) {
         return;
       }
-      await connection.close();
+
+      if (connectionToClose.socket.readyState === WebSocket.CLOSED) {
+        return;
+      }
+
+      await connectionToClose.connection.close();
     },
   };
 };

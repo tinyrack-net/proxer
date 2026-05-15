@@ -23,6 +23,8 @@ export type PublicHttpServerHandle = {
   close(): Promise<void>;
 };
 
+const DEFAULT_STREAM_TIMEOUT_MS = 30_000;
+
 const listen = async (
   server: http.Server,
   address: HostPort,
@@ -70,11 +72,13 @@ const encodeData = (chunk: string | Buffer): string => {
 const handleTunnelFrame = ({
   cleanup,
   frame,
+  markResponseStarted,
   response,
   streamId,
 }: {
   readonly cleanup: () => void;
   readonly frame: TunnelFrame;
+  readonly markResponseStarted: () => void;
   readonly response: http.ServerResponse;
   readonly streamId: string;
 }): void => {
@@ -84,6 +88,7 @@ const handleTunnelFrame = ({
 
   switch (frame.type) {
     case "headers":
+      markResponseStarted();
       response.writeHead(frame.status, frame.headers);
       return;
     case "data":
@@ -124,19 +129,26 @@ const proxyHttpRequest = ({
   connection,
   request,
   response,
+  streamTimeoutMs,
 }: {
   readonly connection: TunnelConnection;
   readonly request: http.IncomingMessage;
   readonly response: http.ServerResponse;
+  readonly streamTimeoutMs: number;
 }): void => {
   const streamId = createStreamId();
   let cleanedUp = false;
+  let closeSent = false;
   let sendQueue = Promise.resolve();
   let removeFrameListener: () => void = () => {};
   let removeCloseListener: () => void = () => {};
   const sendFrame = (frame: TunnelFrame): void => {
     sendQueue = sendQueue.then(() => connection.send(frame));
     sendQueue.catch((error: unknown) => {
+      if (response.writableEnded || response.destroyed) {
+        return;
+      }
+
       if (!response.headersSent) {
         response.writeHead(502, {
           "content-type": "text/plain; charset=utf-8",
@@ -147,6 +159,14 @@ const proxyHttpRequest = ({
       );
     });
   };
+  const sendCloseFrame = (): void => {
+    if (closeSent) {
+      return;
+    }
+
+    closeSent = true;
+    sendFrame({ streamId, type: "close" });
+  };
   const cleanup = (): void => {
     if (cleanedUp) {
       return;
@@ -154,10 +174,35 @@ const proxyHttpRequest = ({
     cleanedUp = true;
     removeFrameListener();
     removeCloseListener();
+    clearTimeout(responseStartTimer);
   };
+  const markResponseStarted = (): void => {
+    clearTimeout(responseStartTimer);
+  };
+  const responseStartTimer = setTimeout(() => {
+    cleanup();
+    sendCloseFrame();
+    if (response.writableEnded || response.destroyed) {
+      return;
+    }
+
+    if (response.headersSent) {
+      response.destroy(new Error("Tunnel response timed out"));
+      return;
+    }
+
+    response.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+    response.end("Tunnel response timed out\n");
+  }, streamTimeoutMs);
 
   removeFrameListener = connection.onFrame((frame) => {
-    handleTunnelFrame({ cleanup, frame, response, streamId });
+    handleTunnelFrame({
+      cleanup,
+      frame,
+      markResponseStarted,
+      response,
+      streamId,
+    });
   });
   removeCloseListener = connection.onClose((error) => {
     cleanup();
@@ -181,12 +226,12 @@ const proxyHttpRequest = ({
   });
   request.on("aborted", () => {
     cleanup();
-    sendFrame({ streamId, type: "close" });
+    sendCloseFrame();
   });
   response.on("close", () => {
     if (!cleanedUp && !response.writableEnded) {
       cleanup();
-      sendFrame({ streamId, type: "close" });
+      sendCloseFrame();
     }
   });
 
@@ -205,6 +250,7 @@ const proxyHttpRequest = ({
 export const startPublicHttpServer = async ({
   address,
   registry,
+  streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
 }: PublicHttpServerOptions): Promise<PublicHttpServerHandle> => {
   const upgradeSockets = new Set<Duplex>();
   const server = http.createServer((request, response) => {
@@ -219,6 +265,7 @@ export const startPublicHttpServer = async ({
       connection: tunnel.connection,
       request,
       response,
+      streamTimeoutMs,
     });
   });
   attachWebSocketUpgradeHandler(server, {

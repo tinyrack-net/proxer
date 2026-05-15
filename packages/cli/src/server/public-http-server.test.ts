@@ -226,4 +226,87 @@ describe("public HTTP server", () => {
 
     await expect(responsePromise).resolves.toMatchObject({ status: 204 });
   });
+
+  it("times out streams that do not receive response headers", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({ name: "demo", connection });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+      streamTimeoutMs: 10,
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+
+    await expect(responsePromise).resolves.toMatchObject({
+      body: "Tunnel response timed out\n",
+      status: 502,
+    });
+    expect(connection.sent).toContainEqual({
+      streamId: openFrame.type === "open" ? openFrame.streamId : "",
+      type: "close",
+    });
+  });
+
+  it("sends a close frame when the public request aborts", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({ name: "demo", connection });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const requestUrl = new URL("/slow", handle.url);
+    const request = http.request(requestUrl, {
+      headers: { host: "demo.localhost" },
+      method: "POST",
+    });
+    request.on("error", () => {});
+    request.write("partial body");
+
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+    request.destroy();
+    const closeFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "close",
+    );
+
+    expect(closeFrame).toEqual({
+      streamId: openFrame.type === "open" ? openFrame.streamId : "",
+      type: "close",
+    });
+  });
+
+  it("closes an active stream when the tunnel disconnects", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({ name: "demo", connection });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    await connection.waitForSentFrame((frame) => frame.type === "open");
+    await connection.close();
+
+    await expect(responsePromise).resolves.toMatchObject({
+      body: "Tunnel connection closed\n",
+      status: 502,
+    });
+  });
 });
