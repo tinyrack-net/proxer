@@ -54,9 +54,14 @@ Terminal=true
 `,
     );
 
-    await copyFile(
-      join(repoRoot, "packages/homepage/src/assets/logo.svg"),
+    await writeFile(
       join(appDir, "proxer.svg"),
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#111827"/>
+  <path d="M36 44h32a20 20 0 0 1 0 40H52" fill="none" stroke="#38bdf8" stroke-width="12" stroke-linecap="round"/>
+  <path d="M92 84H60a20 20 0 0 1 0-40h16" fill="none" stroke="#a78bfa" stroke-width="12" stroke-linecap="round"/>
+</svg>
+`,
     );
 
     await writeFile(
