@@ -1,5 +1,6 @@
 import { buildCommand } from "@stricli/core";
 import type { ProxerCommandContext } from "#app/application.ts";
+import { runHttpClient } from "#app/cli/run.ts";
 import {
   httpNameFlag,
   httpServerFlag,
@@ -48,18 +49,20 @@ export const buildHttpCommand = () => {
         ],
       },
     },
-    func(flags, localPort) {
+    async func(flags, localPort) {
       if (!flags.name) {
         throw new ProxerError("--name is required");
       }
 
-      this.logger.info("http tunnel configuration");
-      this.logger.info(`local: 127.0.0.1:${localPort}`);
-      this.logger.info(`server: ${flags.server}`);
-      this.logger.info(`name: ${flags.name}`);
-      if (flags.token) {
-        this.logger.info("token: configured");
-      }
+      await runHttpClient(
+        {
+          localPort,
+          name: flags.name,
+          serverUrl: flags.server,
+          token: flags.token,
+        },
+        { logger: this.logger, process: this.process },
+      );
     },
   });
 };

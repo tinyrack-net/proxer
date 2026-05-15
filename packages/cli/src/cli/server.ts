@@ -1,11 +1,12 @@
 import { buildCommand } from "@stricli/core";
 import type { ProxerCommandContext } from "#app/application.ts";
+import { runServer as runServerRuntime } from "#app/cli/run.ts";
 import {
   serverControlFlag,
   serverPublicFlag,
   tokenFlag,
 } from "#app/cli/shared-flags.ts";
-import { formatHostPort, parseHostPort } from "#app/lib/address.ts";
+import { parseHostPort } from "#app/lib/address.ts";
 
 type ServerFlags = {
   readonly public: string;
@@ -25,16 +26,14 @@ export const buildServerCommand = () => {
         token: tokenFlag,
       },
     },
-    func(flags) {
+    async func(flags) {
       const publicAddress = parseHostPort(flags.public);
       const controlAddress = parseHostPort(flags.control);
 
-      this.logger.info("server configuration");
-      this.logger.info(`public: ${formatHostPort(publicAddress)}`);
-      this.logger.info(`control: ${formatHostPort(controlAddress)}`);
-      if (flags.token) {
-        this.logger.info("token: configured");
-      }
+      await runServerRuntime(
+        { controlAddress, publicAddress, token: flags.token },
+        { logger: this.logger, process: this.process },
+      );
     },
   });
 };

@@ -1,34 +1,94 @@
+import { EventEmitter } from "node:events";
+import net from "node:net";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { buildProxerApplication, runCli } from "#app/application.ts";
+import {
+  buildProxerApplication,
+  type RunCliOptions,
+  runCli,
+} from "#app/application.ts";
 
-const runWithCapturedOutput = async (args: string[]) => {
+const createCapturedProcess = (
+  onStdout?: (output: string, process: EventEmitter) => void,
+) => {
   const stdout = new PassThrough();
   const stderr = new PassThrough();
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   let exitCode: number | undefined;
+  const process = new EventEmitter() as EventEmitter & RunCliOptions;
 
-  stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+  stdout.on("data", (chunk) => {
+    stdoutChunks.push(Buffer.from(chunk));
+    onStdout?.(Buffer.concat(stdoutChunks).toString("utf8"), process);
+  });
   stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
 
-  await runCli(args, {
-    stdout,
-    stderr,
-    env: {},
-    get exitCode() {
-      return exitCode;
+  Object.defineProperties(process, {
+    env: { value: {} },
+    exitCode: {
+      get() {
+        return exitCode;
+      },
+      set(value: number | undefined) {
+        exitCode = value;
+      },
     },
-    set exitCode(value) {
-      exitCode = value;
-    },
+    stderr: { value: stderr },
+    stdout: { value: stdout },
   });
 
   return {
-    exitCode,
-    stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-    stderr: Buffer.concat(stderrChunks).toString("utf8"),
+    process,
+    result() {
+      return {
+        exitCode,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+      };
+    },
   };
+};
+
+const runWithCapturedOutput = async (
+  args: string[],
+  onStdout?: (output: string, process: EventEmitter) => void,
+) => {
+  const captured = createCapturedProcess(onStdout);
+
+  await runCli(args, captured.process);
+
+  return captured.result();
+};
+
+const getUnusedPort = async (): Promise<number> => {
+  const server = net.createServer();
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  if (typeof address !== "object" || address === null) {
+    throw new Error("server did not bind to a TCP address");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+
+  return address.port;
 };
 
 describe("proxer CLI", () => {
@@ -52,12 +112,33 @@ describe("proxer CLI", () => {
     expect(result.stdout).toContain("proxer 0.0.0");
   });
 
-  it("server command logs parsed default addresses", async () => {
-    const result = await runWithCapturedOutput(["server"]);
+  it("server command starts listeners until a shutdown signal", async () => {
+    const publicPort = await getUnusedPort();
+    let controlPort = await getUnusedPort();
+    while (controlPort === publicPort) {
+      controlPort = await getUnusedPort();
+    }
+    let signaled = false;
+    const result = await runWithCapturedOutput(
+      [
+        "server",
+        "--public",
+        `127.0.0.1:${publicPort}`,
+        "--control",
+        `127.0.0.1:${controlPort}`,
+      ],
+      (output, process) => {
+        if (!signaled && output.includes("control: ws://")) {
+          signaled = true;
+          queueMicrotask(() => process.emit("SIGINT"));
+        }
+      },
+    );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("public: 127.0.0.1:8080");
-    expect(result.stdout).toContain("control: 127.0.0.1:7000");
+    expect(result.stdout).toContain(`public: http://127.0.0.1:${publicPort}`);
+    expect(result.stdout).toContain(`control: ws://127.0.0.1:${controlPort}`);
+    expect(result.stdout).toContain("server stopped");
   });
 
   it("http command requires a tunnel name", async () => {
