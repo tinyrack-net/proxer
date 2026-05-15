@@ -7,7 +7,7 @@ import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
 
 export type ControlServerOptions = {
-  readonly address: HostPort;
+  readonly address?: HostPort;
   readonly registry: TunnelRegistry;
   readonly token?: string;
 };
@@ -48,13 +48,11 @@ const isRegisterFrame = (frame: {
   return frame.type === "register";
 };
 
-export const startControlServer = async ({
-  address,
+export const createControlWebSocketServer = ({
   registry,
   token,
-}: ControlServerOptions): Promise<ControlServerHandle> => {
-  const server = http.createServer();
-  const webSocketServer = new WebSocketServer({ server });
+}: Omit<ControlServerOptions, "address">): WebSocketServer => {
+  const webSocketServer = new WebSocketServer({ noServer: true });
 
   webSocketServer.on("connection", (socket) => {
     const connection = createWebSocketTunnelConnection(socket);
@@ -93,6 +91,24 @@ export const startControlServer = async ({
       if (registeredName) {
         registry.unregister(registeredName, connection);
       }
+    });
+  });
+
+  return webSocketServer;
+};
+
+export const startControlServer = async ({
+  address,
+  registry,
+  token,
+}: ControlServerOptions & {
+  readonly address: HostPort;
+}): Promise<ControlServerHandle> => {
+  const server = http.createServer();
+  const webSocketServer = createControlWebSocketServer({ registry, token });
+  server.on("upgrade", (request, socket, head) => {
+    webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
+      webSocketServer.emit("connection", webSocket, request);
     });
   });
 

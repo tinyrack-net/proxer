@@ -1,11 +1,11 @@
 import type { HostPort } from "#app/lib/address.ts";
-import { startControlServer } from "#app/server/control-server.ts";
-import { startPublicHttpServer } from "#app/server/public-http-server.ts";
+import { normalizeControlPath } from "#app/lib/control-path.ts";
+import { startSinglePortServer } from "#app/server/single-port-server.ts";
 import { TunnelRegistry } from "#app/server/stream-registry.ts";
 
 export type ServerConfig = {
-  readonly publicAddress: HostPort;
-  readonly controlAddress: HostPort;
+  readonly listenAddress: HostPort;
+  readonly controlPath?: string;
   readonly token?: string;
 };
 
@@ -16,33 +16,15 @@ export type RunningServer = {
 };
 
 export const startServer = async ({
-  controlAddress,
-  publicAddress,
+  controlPath,
+  listenAddress,
   token,
 }: ServerConfig): Promise<RunningServer> => {
   const registry = new TunnelRegistry();
-  const publicServer = await startPublicHttpServer({
-    address: publicAddress,
+  return await startSinglePortServer({
+    controlPath: normalizeControlPath(controlPath),
+    listenAddress,
     registry,
+    token,
   });
-
-  try {
-    const controlServer = await startControlServer({
-      address: controlAddress,
-      registry,
-      token,
-    });
-
-    return {
-      controlUrl: controlServer.url,
-      publicUrl: publicServer.url,
-      async close() {
-        await controlServer.close();
-        await publicServer.close();
-      },
-    };
-  } catch (error) {
-    await publicServer.close();
-    throw error;
-  }
 };

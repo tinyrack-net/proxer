@@ -82,8 +82,7 @@ describe("SSE tunnel integration", () => {
     });
     cleanups.push(() => localSseServer.close());
     const proxerServer = await startServer({
-      controlAddress: randomAddress,
-      publicAddress: randomAddress,
+      listenAddress: randomAddress,
       token: "dev-token",
     });
     cleanups.push(() => proxerServer.close());

@@ -2,14 +2,17 @@ import { buildCommand } from "@stricli/core";
 import type { ProxerCommandContext } from "#app/application.ts";
 import { runHttpClient } from "#app/cli/run.ts";
 import {
+  controlPathFlag,
   httpNameFlag,
   httpServerFlag,
   tokenFlag,
 } from "#app/cli/shared-flags.ts";
+import { resolveControlServerUrl } from "#app/lib/control-url.ts";
 import { ProxerError } from "#app/lib/error.ts";
 
 type HttpFlags = {
   readonly server: string;
+  readonly controlPath?: string;
   readonly name?: string;
   readonly token?: string;
 };
@@ -35,6 +38,7 @@ export const buildHttpCommand = () => {
     parameters: {
       flags: {
         server: httpServerFlag,
+        controlPath: controlPathFlag,
         name: httpNameFlag,
         token: tokenFlag,
       },
@@ -58,7 +62,10 @@ export const buildHttpCommand = () => {
         {
           localPort,
           name: flags.name,
-          serverUrl: flags.server,
+          serverUrl: resolveControlServerUrl({
+            controlPath: flags.controlPath,
+            server: flags.server,
+          }),
           token: flags.token,
         },
         { logger: this.logger, process: this.process },

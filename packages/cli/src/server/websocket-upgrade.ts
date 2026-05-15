@@ -140,24 +140,33 @@ const proxyWebSocketUpgrade = ({
   }
 };
 
-export const attachWebSocketUpgradeHandler = (
-  server: http.Server,
+export const handlePublicWebSocketUpgrade = (
+  request: http.IncomingMessage,
+  socket: Duplex,
+  head: Buffer,
   { onSocket, registry }: WebSocketUpgradeHandlerOptions,
 ): void => {
-  server.on("upgrade", (request, socket, head) => {
-    onSocket?.(socket);
-    const name = getTunnelNameFromHost(request.headers.host);
-    const tunnel = registry.get(name);
-    if (!tunnel) {
-      writeNoTunnelResponse(socket, name);
-      return;
-    }
+  onSocket?.(socket);
+  const name = getTunnelNameFromHost(request.headers.host);
+  const tunnel = registry.get(name);
+  if (!tunnel) {
+    writeNoTunnelResponse(socket, name);
+    return;
+  }
 
-    proxyWebSocketUpgrade({
-      connection: tunnel.connection,
-      head,
-      request,
-      socket,
-    });
+  proxyWebSocketUpgrade({
+    connection: tunnel.connection,
+    head,
+    request,
+    socket,
+  });
+};
+
+export const attachWebSocketUpgradeHandler = (
+  server: http.Server,
+  options: WebSocketUpgradeHandlerOptions,
+): void => {
+  server.on("upgrade", (request, socket, head) => {
+    handlePublicWebSocketUpgrade(request, socket, head, options);
   });
 };

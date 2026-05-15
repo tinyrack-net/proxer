@@ -23,22 +23,22 @@ const createSignalTarget = (): EventEmitter & RuntimeSignalTarget => {
 };
 
 describe("runtime assembly", () => {
-  it("starts the server, logs listener URLs, and closes on SIGINT", async () => {
+  it("starts the single-port server, logs listener URLs, and closes on SIGINT", async () => {
     const logger = createLogger();
     const process = createSignalTarget();
     const closed: string[] = [];
     let observedConfig:
       | {
-          readonly publicAddress: HostPort;
-          readonly controlAddress: HostPort;
+          readonly listenAddress: HostPort;
+          readonly controlPath?: string;
           readonly token?: string;
         }
       | undefined;
 
     const runPromise = runServer(
       {
-        controlAddress: { host: "127.0.0.1", port: 7000 },
-        publicAddress: { host: "127.0.0.1", port: 8080 },
+        controlPath: "/__proxer_control_7f3d9a2b__",
+        listenAddress: { host: "127.0.0.1", port: 8080 },
         token: "dev-token",
       },
       {
@@ -47,7 +47,7 @@ describe("runtime assembly", () => {
         async startServer(config) {
           observedConfig = config;
           return {
-            controlUrl: "ws://127.0.0.1:7000",
+            controlUrl: "ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
             publicUrl: "http://127.0.0.1:8080",
             async close() {
               closed.push("server");
@@ -60,12 +60,14 @@ describe("runtime assembly", () => {
     await Promise.resolve();
 
     expect(observedConfig).toEqual({
-      controlAddress: { host: "127.0.0.1", port: 7000 },
-      publicAddress: { host: "127.0.0.1", port: 8080 },
+      controlPath: "/__proxer_control_7f3d9a2b__",
+      listenAddress: { host: "127.0.0.1", port: 8080 },
       token: "dev-token",
     });
     expect(logger.messages).toContain("public: http://127.0.0.1:8080");
-    expect(logger.messages).toContain("control: ws://127.0.0.1:7000");
+    expect(logger.messages).toContain(
+      "control: ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
+    );
 
     process.emit("SIGINT");
     await runPromise;
@@ -91,7 +93,7 @@ describe("runtime assembly", () => {
       {
         localPort: 3000,
         name: "demo",
-        serverUrl: "ws://127.0.0.1:7000",
+        serverUrl: "ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
         token: "dev-token",
       },
       {
@@ -114,12 +116,14 @@ describe("runtime assembly", () => {
     expect(observedConfig).toEqual({
       localPort: 3000,
       name: "demo",
-      serverUrl: "ws://127.0.0.1:7000",
+      serverUrl: "ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
       token: "dev-token",
     });
     expect(logger.messages).toContain("name: demo");
     expect(logger.messages).toContain("local: 127.0.0.1:3000");
-    expect(logger.messages).toContain("server: ws://127.0.0.1:7000");
+    expect(logger.messages).toContain(
+      "server: ws://127.0.0.1:8080/__proxer_control_7f3d9a2b__",
+    );
 
     process.emit("SIGTERM");
     await runPromise;

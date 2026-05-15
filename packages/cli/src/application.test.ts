@@ -112,21 +112,11 @@ describe("proxer CLI", () => {
     expect(result.stdout).toContain("proxer 0.0.0");
   });
 
-  it("server command starts listeners until a shutdown signal", async () => {
-    const publicPort = await getUnusedPort();
-    let controlPort = await getUnusedPort();
-    while (controlPort === publicPort) {
-      controlPort = await getUnusedPort();
-    }
+  it("server command starts a single listener until a shutdown signal", async () => {
+    const listenPort = await getUnusedPort();
     let signaled = false;
     const result = await runWithCapturedOutput(
-      [
-        "server",
-        "--public",
-        `127.0.0.1:${publicPort}`,
-        "--control",
-        `127.0.0.1:${controlPort}`,
-      ],
+      ["server", "--listen", `127.0.0.1:${listenPort}`],
       (output, process) => {
         if (!signaled && output.includes("control: ws://")) {
           signaled = true;
@@ -136,8 +126,10 @@ describe("proxer CLI", () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`public: http://127.0.0.1:${publicPort}`);
-    expect(result.stdout).toContain(`control: ws://127.0.0.1:${controlPort}`);
+    expect(result.stdout).toContain(`public: http://127.0.0.1:${listenPort}`);
+    expect(result.stdout).toContain(
+      `control: ws://127.0.0.1:${listenPort}/__proxer_control_7f3d9a2b__`,
+    );
     expect(result.stdout).toContain("server stopped");
   });
 

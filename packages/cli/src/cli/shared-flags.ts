@@ -1,7 +1,7 @@
 import {
-  DEFAULT_CONTROL_ADDRESS,
+  DEFAULT_CONTROL_PATH,
   DEFAULT_HTTP_SERVER_URL,
-  DEFAULT_PUBLIC_ADDRESS,
+  DEFAULT_LISTEN_ADDRESS,
 } from "#app/config/constants.ts";
 
 export const tokenFlag = {
@@ -11,26 +11,26 @@ export const tokenFlag = {
   optional: true as const,
 };
 
-export const serverPublicFlag = {
+export const serverListenFlag = {
   kind: "parsed" as const,
   parse: (input: string) => input,
-  brief: "Public HTTP listener address.",
+  brief: "Single HTTP/WebSocket listener address.",
   placeholder: "host:port",
-  default: DEFAULT_PUBLIC_ADDRESS,
+  default: DEFAULT_LISTEN_ADDRESS,
 };
 
-export const serverControlFlag = {
+export const controlPathFlag = {
   kind: "parsed" as const,
   parse: (input: string) => input,
-  brief: "Tunnel control WebSocket listener address.",
-  placeholder: "host:port",
-  default: DEFAULT_CONTROL_ADDRESS,
+  brief: "Control WebSocket path.",
+  placeholder: DEFAULT_CONTROL_PATH,
+  optional: true as const,
 };
 
 export const httpServerFlag = {
   kind: "parsed" as const,
   parse: (input: string) => input,
-  brief: "Tunnel control WebSocket URL.",
+  brief: "Tunnel server base URL.",
   placeholder: "ws://host:port",
   default: DEFAULT_HTTP_SERVER_URL,
 };

@@ -10,7 +10,15 @@
 
 ---
 
-Proxer runs a public HTTP listener plus a WebSocket tunnel control listener. A local client connects outbound to the control listener and forwards HTTP, SSE, and WebSocket traffic to a local service.
+Proxer runs one HTTP/WebSocket listener. Public HTTP, SSE, and WebSocket traffic enters through that listener, while tunnel clients connect to a reserved control WebSocket path on the same port.
+
+Default control path:
+
+```text
+/__proxer_control_7f3d9a2b__
+```
+
+You normally do not need to type this path on the client. Pass only the server base URL and Proxer appends the default control path internally.
 
 ## Development
 
@@ -32,11 +40,43 @@ mise exec -- pnpm --filter @tinyrack/proxer start --version
 Available MVP commands:
 
 ```bash
-proxer server --public 127.0.0.1:8080 --control 127.0.0.1:7000 --token dev-token
-proxer http 3000 --server ws://127.0.0.1:7000 --name demo --token dev-token
+proxer server --listen 127.0.0.1:8080 --token dev-token
+proxer http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
 ```
 
 When running from this repository, use `mise exec -- pnpm --filter @tinyrack/proxer start` in place of `proxer`.
+
+## Single-Port Routing Model
+
+One server port handles every path:
+
+```text
+HTTP requests                         -> public proxy
+WebSocket upgrade /__proxer_control_7f3d9a2b__ -> tunnel control connection
+WebSocket upgrade on any other path   -> public WebSocket proxy
+```
+
+TLS is not required for single-port mode:
+
+```text
+http://host:8080 + ws://host:8080       -> no TLS
+https://host + wss://host               -> TLS
+```
+
+For a custom deployment, set the same control path on both server and client:
+
+```bash
+proxer server \
+  --listen 127.0.0.1:8080 \
+  --control-path /_proxer/control \
+  --token dev-token
+
+proxer http 3000 \
+  --server ws://127.0.0.1:8080 \
+  --control-path /_proxer/control \
+  --name demo \
+  --token dev-token
+```
 
 ## HTTP Demo
 
@@ -49,13 +89,13 @@ python3 -m http.server 3000 --bind 127.0.0.1
 Start the Proxer server in another terminal:
 
 ```bash
-mise exec -- pnpm --filter @tinyrack/proxer start server --public 127.0.0.1:8080 --control 127.0.0.1:7000 --token dev-token
+mise exec -- pnpm --filter @tinyrack/proxer start server --listen 127.0.0.1:8080 --token dev-token
 ```
 
 Start the tunnel client in a third terminal:
 
 ```bash
-mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.0.1:7000 --name demo --token dev-token
+mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
 ```
 
 Call the public listener with a host that maps to the tunnel name:

@@ -23,7 +23,7 @@ export type PublicHttpServerHandle = {
   close(): Promise<void>;
 };
 
-const DEFAULT_STREAM_TIMEOUT_MS = 30_000;
+export const DEFAULT_STREAM_TIMEOUT_MS = 30_000;
 
 const listen = async (
   server: http.Server,
@@ -38,7 +38,7 @@ const listen = async (
   });
 };
 
-const getListeningAddress = (server: http.Server): HostPort => {
+export const getPublicListeningAddress = (server: http.Server): HostPort => {
   const address = server.address();
   if (typeof address !== "object" || address === null) {
     throw new ProxerError("Public HTTP server did not bind to a TCP address");
@@ -50,7 +50,9 @@ const getListeningAddress = (server: http.Server): HostPort => {
   };
 };
 
-const getTunnelNameFromHost = (host: string | string[] | undefined): string => {
+export const getTunnelNameFromHost = (
+  host: string | string[] | undefined,
+): string => {
   const hostValue = Array.isArray(host) ? host[0] : host;
   if (!hostValue) {
     return "";
@@ -247,6 +249,32 @@ const proxyHttpRequest = ({
   });
 };
 
+export const handlePublicHttpRequest = ({
+  registry,
+  request,
+  response,
+  streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
+}: {
+  readonly registry: TunnelRegistry;
+  readonly request: http.IncomingMessage;
+  readonly response: http.ServerResponse;
+  readonly streamTimeoutMs?: number;
+}): void => {
+  const name = getTunnelNameFromHost(request.headers.host);
+  const tunnel = registry.get(name);
+  if (!tunnel) {
+    endWithNoTunnel(response, name);
+    return;
+  }
+
+  proxyHttpRequest({
+    connection: tunnel.connection,
+    request,
+    response,
+    streamTimeoutMs,
+  });
+};
+
 export const startPublicHttpServer = async ({
   address,
   registry,
@@ -254,19 +282,7 @@ export const startPublicHttpServer = async ({
 }: PublicHttpServerOptions): Promise<PublicHttpServerHandle> => {
   const upgradeSockets = new Set<Duplex>();
   const server = http.createServer((request, response) => {
-    const name = getTunnelNameFromHost(request.headers.host);
-    const tunnel = registry.get(name);
-    if (!tunnel) {
-      endWithNoTunnel(response, name);
-      return;
-    }
-
-    proxyHttpRequest({
-      connection: tunnel.connection,
-      request,
-      response,
-      streamTimeoutMs,
-    });
+    handlePublicHttpRequest({ registry, request, response, streamTimeoutMs });
   });
   attachWebSocketUpgradeHandler(server, {
     onSocket(socket) {
@@ -277,7 +293,7 @@ export const startPublicHttpServer = async ({
   });
 
   await listen(server, address);
-  const listeningAddress = getListeningAddress(server);
+  const listeningAddress = getPublicListeningAddress(server);
 
   return {
     url: `http://${formatHostPort(listeningAddress)}`,

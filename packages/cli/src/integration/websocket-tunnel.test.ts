@@ -61,8 +61,7 @@ describe("WebSocket tunnel integration", () => {
     });
     cleanups.push(() => localWebSocketServer.close());
     const proxerServer = await startServer({
-      controlAddress: randomAddress,
-      publicAddress: randomAddress,
+      listenAddress: randomAddress,
       token: "dev-token",
     });
     cleanups.push(() => proxerServer.close());
