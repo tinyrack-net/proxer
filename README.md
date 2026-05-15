@@ -52,22 +52,22 @@ Prebuilt standalone executables are published for Linux, macOS, and Windows from
 
 ### Docker
 
-The OCI image is published to GitHub Container Registry:
+The OCI image is published to Docker Hub (`tinyrack/proxer`) and GHCR (`ghcr.io/tinyrack-net/proxer`). Docker Hub is the shortest image name:
 
 ```bash
-docker run --rm ghcr.io/tinyrack-net/proxer --version
+docker run --rm tinyrack/proxer --version
 ```
 
 Run a public Proxer server in Docker and publish port 8080:
 
 ```bash
-docker run --rm -p 8080:8080 ghcr.io/tinyrack-net/proxer server --listen 0.0.0.0:8080 --token dev-token
+docker run --rm -p 8080:8080 tinyrack/proxer server --listen 0.0.0.0:8080 --token dev-token
 ```
 
 On Linux, run the tunnel client with host networking when it needs to reach a service on the Docker host:
 
 ```bash
-docker run --rm --network host ghcr.io/tinyrack-net/proxer http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
+docker run --rm --network host tinyrack/proxer http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
 ```
 
 On macOS and Windows Docker Desktop, use `host.docker.internal` instead of `127.0.0.1` when the container needs to reach a local service on the host.

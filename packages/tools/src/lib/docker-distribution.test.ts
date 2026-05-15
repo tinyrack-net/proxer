@@ -38,12 +38,32 @@ describe("Docker distribution metadata", () => {
     }
   });
 
-  test("workflow builds pull request smoke images and publishes GHCR tags", async () => {
+  test("workflow builds pull request smoke images and publishes registry tags", async () => {
     const workflow = await readRepoFile(".github/workflows/pipeline.yml");
 
-    expect(workflow).toContain("ghcr.io/tinyrack-net/proxer");
+    expect(workflow).toContain("GHCR_REGISTRY: ghcr.io");
+    expect(workflow).toContain("GHCR_IMAGE_NAME: tinyrack-net/proxer");
+    expect(workflow).toContain("DOCKERHUB_REGISTRY: docker.io");
+    expect(workflow).toContain("DOCKERHUB_USERNAME: tinyrack");
+    expect(workflow).toContain("DOCKERHUB_IMAGE_NAME: tinyrack/proxer");
+    expect(workflow).toContain(
+      "${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}",
+    );
+    expect(workflow).toContain(
+      "${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}",
+    );
     expect(workflow).toContain("packages: write");
-    expect(workflow).toContain("docker/login-action");
+    expect(workflow).toContain("Validate Docker Hub configuration");
+    expect(workflow).toContain(
+      "Missing Docker Hub configuration. Set DOCKERHUB_TOKEN as a repository secret.",
+    );
+    expect(workflow).toContain("Log in to GitHub Container Registry");
+    expect(workflow).toContain("registry: ${{ env.GHCR_REGISTRY }}");
+    expect(workflow).toContain("password: ${{ secrets.GITHUB_TOKEN }}");
+    expect(workflow).toContain("Log in to Docker Hub");
+    expect(workflow).toContain("registry: ${{ env.DOCKERHUB_REGISTRY }}");
+    expect(workflow).toContain("username: ${{ env.DOCKERHUB_USERNAME }}");
+    expect(workflow).toContain("password: ${{ secrets.DOCKERHUB_TOKEN }}");
     expect(workflow).toContain("docker/metadata-action");
     expect(workflow).toContain("docker/build-push-action");
     expect(workflow).toContain("type=semver,pattern={{version}}");
@@ -55,11 +75,11 @@ describe("Docker distribution metadata", () => {
   test("README documents Docker install and runtime examples", async () => {
     const readme = await readRepoFile("README.md");
 
+    expect(readme).toContain("Docker Hub (`tinyrack/proxer`)");
+    expect(readme).toContain("GHCR (`ghcr.io/tinyrack-net/proxer`)");
+    expect(readme).toContain("docker run --rm tinyrack/proxer --version");
     expect(readme).toContain(
-      "docker run --rm ghcr.io/tinyrack-net/proxer --version",
-    );
-    expect(readme).toContain(
-      "docker run --rm -p 8080:8080 ghcr.io/tinyrack-net/proxer server",
+      "docker run --rm -p 8080:8080 tinyrack/proxer server",
     );
     expect(readme).toContain("--network host");
     expect(readme).toContain("host.docker.internal");
