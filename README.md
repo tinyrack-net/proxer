@@ -2,15 +2,92 @@
 
 # Proxer
 
-**Reverse-tunnel CLI for exposing local HTTP services through a persistent client tunnel.**
+**Reverse-tunnel CLI for exposing local HTTP, SSE, and WebSocket services through a persistent client tunnel.**
 
+[![CI](https://github.com/tinyrack-net/proxer/actions/workflows/pipeline.yml/badge.svg)](https://github.com/tinyrack-net/proxer/actions/workflows/pipeline.yml)
+[![npm](https://img.shields.io/npm/v/@tinyrack/proxer)](https://www.npmjs.com/package/@tinyrack/proxer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](https://nodejs.org/)
+
+[Quick Start](#quick-start) · [Examples](#examples) · [Packaging](#standalone-executables)
 
 </div>
 
 ---
 
-Proxer runs one HTTP/WebSocket listener. Public HTTP, SSE, and WebSocket traffic enters through that listener, while tunnel clients connect to a reserved control WebSocket path on the same port.
+Proxer is an ngrok/Pinggy-style reverse tunnel for self-hosted development and private infrastructure.
+
+Run one public Proxer server, then connect tunnel clients from private networks. Public HTTP requests, Server-Sent Events, and WebSocket upgrades are forwarded over a persistent client-initiated WebSocket control connection, so the local service does not need to accept inbound internet traffic.
+
+## Features
+
+- **Single-port server** for public traffic and tunnel control
+- **HTTP streaming proxy** for regular and long-running responses
+- **Server-Sent Events support** without buffering the response body
+- **WebSocket upgrade proxy** for realtime applications
+- **Client-initiated tunnels** that work from NATed or private networks
+- **Named tunnel routing** via the first host label, for example `demo.example.com`
+- **Single-tunnel fallback** for simple localhost/IP demos
+- **Standalone executables** built from the Node.js CLI
+
+## Installation
+
+### npm
+
+Use npm on any platform, or as a cross-platform fallback.
+
+```bash
+npm install -g @tinyrack/proxer
+```
+
+### macOS / Linux
+
+```bash
+brew install tinyrack-net/tap/proxer
+```
+
+### GitHub Releases
+
+Prebuilt standalone executables are published for Linux, macOS, and Windows from the [GitHub Releases](https://github.com/tinyrack-net/proxer/releases) page.
+
+## Quick Start
+
+Start the public Proxer server:
+
+```bash
+proxer server --listen 0.0.0.0:8080 --token dev-token
+```
+
+Start a local app on the client machine:
+
+```bash
+python3 -m http.server 3000 --bind 127.0.0.1
+```
+
+Connect the tunnel client:
+
+```bash
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --name demo \
+  --token dev-token
+```
+
+Then open the public listener. With exactly one registered tunnel, direct requests route to that tunnel:
+
+```bash
+curl http://your-server.example.com:8080/
+```
+
+You can also route explicitly by host name. The first host label maps to the tunnel name:
+
+```bash
+curl -H 'Host: demo.localhost' http://127.0.0.1:8080/
+```
+
+## How It Works
+
+Proxer uses one HTTP/WebSocket listener. Public traffic enters through that listener, while tunnel clients connect to a reserved control WebSocket path on the same port.
 
 Default control path:
 
@@ -20,47 +97,17 @@ Default control path:
 
 You normally do not need to type this path on the client. Pass only the server base URL and Proxer appends the default control path internally.
 
-## Development
-
-```bash
-mise exec -- pnpm install
-mise exec -- pnpm run build
-mise exec -- pnpm run typecheck
-mise exec -- pnpm run test
-mise exec -- pnpm run format:check
-```
-
-## CLI
-
-```bash
-mise exec -- pnpm --filter @tinyrack/proxer start --help
-mise exec -- pnpm --filter @tinyrack/proxer start --version
-```
-
-Available MVP commands:
-
-```bash
-proxer server --listen 127.0.0.1:8080 --token dev-token
-proxer http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
-```
-
-When running from this repository, use `mise exec -- pnpm --filter @tinyrack/proxer start` in place of `proxer`.
-
-## Single-Port Routing Model
-
-One server port handles every path:
-
 ```text
-HTTP requests                         -> public proxy
+HTTP requests                                  -> public HTTP proxy
 WebSocket upgrade /__proxer_control_7f3d9a2b__ -> tunnel control connection
-WebSocket upgrade on any other path   -> public WebSocket proxy
+WebSocket upgrade on any other path            -> public WebSocket proxy
 ```
 
 TLS is not required for single-port mode:
 
 ```text
-http://host:8080 + ws://host:8080       -> no TLS
-https://host + wss://host               -> TLS
+http://host:8080 + ws://host:8080 -> no TLS
+https://host + wss://host         -> TLS
 ```
 
 For a custom deployment, set the same control path on both server and client:
@@ -78,7 +125,9 @@ proxer http 3000 \
   --token dev-token
 ```
 
-## HTTP Demo
+## Examples
+
+### HTTP
 
 Start a local HTTP service:
 
@@ -89,28 +138,22 @@ python3 -m http.server 3000 --bind 127.0.0.1
 Start the Proxer server in another terminal:
 
 ```bash
-mise exec -- pnpm --filter @tinyrack/proxer start server --listen 127.0.0.1:8080 --token dev-token
+proxer server --listen 127.0.0.1:8080 --token dev-token
 ```
 
 Start the tunnel client in a third terminal:
 
 ```bash
-mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
+proxer http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
 ```
 
-Call the public listener. With exactly one registered tunnel, direct localhost/IP requests route to that tunnel:
-
-```bash
-curl http://127.0.0.1:8080/
-```
-
-You can also route explicitly by host name. The first host label maps to the tunnel name:
+Call the public listener:
 
 ```bash
 curl -H 'Host: demo.localhost' http://127.0.0.1:8080/
 ```
 
-## SSE Demo
+### Server-Sent Events
 
 Start a local SSE service on port 3000:
 
@@ -142,18 +185,18 @@ http
 EOF
 ```
 
-Run the same `proxer server` and `proxer http` commands from the HTTP demo, then stream events through the tunnel:
+Run the same `proxer server` and `proxer http` commands from the HTTP example, then stream events through the tunnel:
 
 ```bash
 curl -N -H 'Host: demo.localhost' http://127.0.0.1:8080/events
 ```
 
-## WebSocket Demo
+### WebSocket
 
 Start a local WebSocket echo service on port 3000:
 
 ```bash
-mise exec -- pnpm --filter @tinyrack/proxer exec node --input-type=module <<'EOF'
+node --input-type=module <<'EOF'
 import http from "node:http";
 import { WebSocketServer } from "ws";
 
@@ -172,10 +215,10 @@ server.listen(3000, "127.0.0.1", () => {
 EOF
 ```
 
-Run the same `proxer server` and `proxer http` commands from the HTTP demo, then connect through the public listener:
+Run the same `proxer server` and `proxer http` commands from the HTTP example, then connect through the public listener:
 
 ```bash
-mise exec -- pnpm --filter @tinyrack/proxer exec node --input-type=module <<'EOF'
+node --input-type=module <<'EOF'
 import { WebSocket } from "ws";
 
 const socket = new WebSocket("ws://127.0.0.1:8080/echo", {
@@ -190,7 +233,25 @@ socket.on("message", (data) => {
 EOF
 ```
 
-## SEA Packaging
+## Development
+
+```bash
+mise exec -- pnpm install
+mise exec -- pnpm run build
+mise exec -- pnpm run typecheck
+mise exec -- pnpm run test
+mise exec -- pnpm run format:check
+```
+
+Run the CLI from this repository:
+
+```bash
+mise exec -- pnpm --filter @tinyrack/proxer start --help
+mise exec -- pnpm --filter @tinyrack/proxer start server --listen 127.0.0.1:8080 --token dev-token
+mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.0.1:8080 --name demo --token dev-token
+```
+
+## Standalone Executables
 
 Build and smoke-test the standalone executable:
 
@@ -198,3 +259,9 @@ Build and smoke-test the standalone executable:
 mise exec -- pnpm run pkg:build
 mise exec -- pnpm run pkg:smoke -- --skip-build
 ```
+
+The default build writes `packages/cli/dist/pkg/proxer`. Release builds produce Linux, macOS, and Windows artifacts.
+
+## License
+
+[MIT](LICENSE)
