@@ -7,6 +7,7 @@ import {
   type RunCliOptions,
   runCli,
 } from "#app/application.ts";
+import packageJson from "../package.json" with { type: "json" };
 
 const createCapturedProcess = (
   onStdout?: (output: string, process: EventEmitter) => void,
@@ -109,7 +110,7 @@ describe("proxer CLI", () => {
     const result = await runWithCapturedOutput(["--version"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("proxer 0.0.0");
+    expect(result.stdout).toContain(`proxer ${packageJson.version}`);
   });
 
   it("server command starts a single listener until a shutdown signal", async () => {
