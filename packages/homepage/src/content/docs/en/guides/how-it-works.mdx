@@ -1,31 +1,51 @@
 ---
 title: How It Works
-description: Proxer uses one listener for public traffic and tunnel control.
+description: Proxer uses one listener and a client-initiated WebSocket tunnel.
 ---
 
-Proxer uses one HTTP/WebSocket listener. Public traffic enters through that listener, while tunnel clients connect to a reserved control WebSocket path on the same port.
+Proxer uses one HTTP/WebSocket listener. Public traffic enters through that listener, and tunnel clients connect to a reserved control WebSocket path on the same port.
 
-Default control path:
-
-```text
-/__proxer_control_7f3d9a2b__
-```
-
-You normally do not need to type this path on the client. Pass only the server base URL and Proxer appends the default control path internally.
+Reserved internal paths:
 
 ```text
-HTTP requests                                  -> public HTTP proxy
-WebSocket upgrade /__proxer_control_7f3d9a2b__ -> tunnel control connection
-WebSocket upgrade on any other path            -> public WebSocket proxy
+/__proxer__/control
+/__proxer__/health/live
+/__proxer__/health/ready
 ```
 
-TLS is not required for single-port mode, but production deployments should usually terminate TLS at a reverse proxy and connect clients with `wss://`.
+These paths are fixed. There is no `--control-path` option.
 
-## Health probes
+---
 
-Kubernetes liveness and readiness probes can use built-in endpoints. They do not require a tunnel or token:
+## The Control Connection
 
-```text
-/__proxer/health/live
-/__proxer/health/ready
-```
+A tunnel client connects to `/__proxer__/control` with WebSocket. After the connection opens, it registers either the root route or a subdomain route.
+
+When public traffic arrives, the server creates a stream ID and sends request frames over the control connection. The client forwards those frames to the local HTTP service, then sends response frames back to the server. Multiple requests can share one control connection because each stream has its own `streamId`.
+
+---
+
+## Request Flow
+
+1. A browser or reverse proxy sends a request to the public Proxer server.
+2. The server reads the `Host` header and finds the matching root or subdomain tunnel.
+3. The server opens a new tunnel stream for the request.
+4. The client forwards the request to the local service.
+5. Response headers and body chunks are sent back over the same tunnel stream.
+6. The public server writes the response to the original caller.
+
+HTTP streaming and Server-Sent Events are forwarded as chunks. WebSocket upgrades are proxied as bidirectional tunnel streams.
+
+---
+
+## Reconnect Behavior
+
+If an established control connection drops, the client cleans up active streams and tries to reconnect. When the server comes back on the same URL, the client registers again.
+
+Initial startup is stricter: if the client starts while the server is unavailable, the command may fail before the reconnect loop exists. Start the server first, then start clients.
+
+---
+
+## What Proxer Does Not Guess
+
+Proxer does not route a request to the only connected client just because there is one. The request host must match the registered root domain or a registered subdomain. This keeps multi-client deployments predictable.

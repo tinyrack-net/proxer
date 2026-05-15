@@ -1,32 +1,82 @@
 ---
-title: ルーティングと信頼プロキシ
+title: ルーティングと信頼済みプロキシ
 description: ルートおよびサブドメインホストをルーティングし、reverse proxy背後で運用します。
 ---
 
-Proxerは受信したホストに基づいて公開リクエストをルーティングします。
+Proxerは公開リクエストをホスト名でルーティングします。すべての経路が明示的なので、別々のクライアントが混ざることはありません。
 
-- `--subdomain`なしのクライアントは設定されたルートドメインを登録します。
-- `--subdomain demo`を使うクライアントは`demo.<domain>`を登録します。
-- 未知のサブドメインは`404`を返します。
+---
 
-ProxerをTraefikなどのreverse proxy背後で実行する場合は、`X-Forwarded-*`ヘッダーを提供できるTCP peerアドレスを設定します。信頼プロキシがない場合、Proxerはルーティング用に転送されたhost、protocol、client IPヘッダーを無視します。
+## ルート経路とサブドメイン経路
 
-```bash
-PROXER_LISTEN=0.0.0.0:8080 \
-PROXER_DOMAIN=proxy.intranet.example.com \
-PROXER_TRUSTED_PROXIES=private,loopback \
-PROXER_TOKEN=... \
-proxer server
-```
-
-プロキシ経由のクライアント設定例です。
+公開ドメインを指定してサーバーを起動します。
 
 ```bash
-PROXER_SERVER=wss://proxy.intranet.example.com \
-PROXER_CONTROL_PATH=/__proxer_control_7f3d9a2b__ \
-PROXER_SUBDOMAIN=demo \
-PROXER_TOKEN=... \
-proxer http 3000
+proxer server --listen 0.0.0.0:8080 --domain proxy.example.com --token dev-token
 ```
 
-信頼プロキシとして指定できる値は`loopback`、`private`、IPリテラル、CIDR範囲です。自分で管理しているreverse proxyだけを信頼してください。
+`--subdomain`なしのクライアントはルート経路を登録します。
+
+```bash
+proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
+```
+
+`proxy.example.com`へのリクエストはこのクライアントへ送られます。
+
+`--subdomain demo`を指定したクライアントは`demo.proxy.example.com`を登録します。
+
+```bash
+proxer http 3000 --server ws://proxy.example.com:8080 --subdomain demo --token dev-token
+```
+
+不明なホストへのリクエストは`404`を返します。
+
+---
+
+## ローカルでのテスト
+
+DNSなしでテストするときは、ホストを明示します。
+
+```bash
+curl -H 'Host: demo.proxy.example.com' http://127.0.0.1:8080/
+```
+
+`localhost`やIPアドレス宛てのリクエストは、接続済みクライアントへ自動ルーティングされません。
+
+---
+
+## Reverse Proxyの背後で実行する
+
+Traefik、Caddy、NGINXなどのreverse proxyをProxerの前に置く場合は、元のHostヘッダーを保持してください。Traefikでは通常、`passHostHeader`を有効にしたデフォルト動作のままで問題ありません。
+
+次に、どのプロキシアドレスからのforwardedヘッダーを信頼するかをProxerへ伝えます。
+
+```bash
+proxer server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --trusted-proxy loopback \
+  --trusted-proxy private
+```
+
+環境変数ではcomma-separated形式を使います。
+
+```bash
+PROXER_TRUSTED_PROXIES=loopback,private,10.42.0.0/16 proxer server --domain proxy.example.com
+```
+
+信頼済みプロキシは`X-Forwarded-For`、`X-Real-IP`、`X-Forwarded-Host`、`X-Forwarded-Proto`を提供できます。信頼していないpeerからのforwardedヘッダーは、ルーティング判断に使われません。
+
+---
+
+## 予約済み内部パス
+
+すべてのProxer内部エンドポイントは`/__proxer__/`配下にあります。
+
+```text
+/__proxer__/control
+/__proxer__/health/live
+/__proxer__/health/ready
+```
+
+これらのパスをローカルアプリへルーティングしないでください。公開サーバー自身が処理します。

@@ -1,32 +1,54 @@
 ---
 title: Proxer
-description: HTTP、SSE、WebSocketサービス向けのセルフホスト型reverse tunnelです。
+description: HTTP、SSE、WebSocketサービス向けのセルフホスト型リバーストンネルです。
 ---
 
-Proxerは、セルフホスト開発環境とプライベートインフラ向けのngrok/Pinggyスタイルのreverse tunnelです。
+`Proxer`は、**自分で管理する公開サーバーを通して、ローカルのHTTP、Server-Sent Events、WebSocketサービスを公開するセルフホスト型リバーストンネルCLI**です。
 
-公開Proxerサーバーを1つ実行し、プライベートネットワークからトンネルクライアントを接続します。公開HTTPリクエスト、Server-Sent Events、WebSocketアップグレードは、クライアント開始の永続WebSocket制御接続を通して転送されるため、ローカルサービスがインターネットからのインバウンド通信を直接受ける必要はありません。
+---
 
-## 機能
+## なぜProxer？
 
-- 公開トラフィックとトンネル制御を扱う単一ポートサーバー
-- 通常レスポンスと長時間レスポンス向けのHTTPストリーミングプロキシ
-- レスポンス本文をバッファリングしないServer-Sent Events対応
-- リアルタイムアプリ向けのWebSocketアップグレードプロキシ
-- NATやプライベートネットワークで動作するクライアント開始トンネル
-- 明示的な公開ホスト向けのサブドメインおよびルートドメインルーティング
-- Node.js CLIからビルドされるスタンドアロン実行ファイル
+ローカルサービスごとにインバウンドポートを開ける運用は手間がかかり、リスクも増えます。SSHフォワードは一時的な作業には便利ですが、チームで共有したり安定した公開ホスト名で運用したりするには向きません。ホスティング型のトンネルサービスは手軽ですが、コントロールプレーンを外部サービスに預けることになります。
 
-## インストール
+Proxerはワークフローをシンプルに保ちます。公開サーバーを1つ起動し、プライベートネットワーク側からクライアントを接続します。各クライアントはサーバーへ永続的なWebSocket制御接続を開き、公開リクエストはそのクライアント開始の接続上でローカルサービスへ戻されます。ローカルアプリは`127.0.0.1`やプライベートインターフェースで待ち受けるだけで十分です。
+
+ルーティングは明示的です。`--subdomain`なしのクライアントはルートドメインの経路を担当します。`--subdomain demo`を指定したクライアントは`demo.<domain>`を担当します。不明なホストは推測して転送せず、`404`を返します。
+
+---
+
+## 主な機能
+
+- 公開HTTPトラフィック、WebSocketアップグレード、ヘルスチェック、トンネル制御を扱う**単一ポートサーバー**
+- 通常のレスポンスや長時間レスポンスに対応する**HTTPストリーミング**
+- レスポンス本文をバッファリングしない**Server-Sent Events**対応
+- リアルタイムなローカルアプリ向けの**WebSocketプロキシ**
+- NAT配下やプライベートネットワークから使える**クライアント開始トンネル**
+- 単一クライアントへのfallbackがない**ルートドメイン・サブドメインルーティング**
+- Traefikなどのreverse proxy向けの**信頼済みプロキシ**対応
+- **単体実行ファイル、npm、Homebrew、OCIイメージ**で配布
+- AIエージェントがProxerの使い方を読める**スキルインストールコマンド**
+
+---
+
+## 実行イメージ
 
 ```bash
-npm install -g @tinyrack/proxer
+# 公開サーバーを起動
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+
+# ローカルアプリをサブドメインで公開
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --subdomain demo \
+  --token dev-token
+
+# 公開リクエストをトンネルへ送る
+curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
 ```
 
-```bash
-brew install tinyrack-net/tap/proxer
-```
+---
 
-ビルド済みのスタンドアロン実行ファイルは[GitHub Releases](https://github.com/tinyrack-net/proxer/releases)で公開されています。
+## 次のステップ
 
-OCIイメージは`tinyrack/proxer`および`ghcr.io/tinyrack-net/proxer`として公開されています。
+[はじめに](/ja/getting-started/)に進み、Proxerをインストールして最初のローカルサービスを公開してみましょう。

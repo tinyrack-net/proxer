@@ -11,16 +11,75 @@ OCIイメージはDocker Hubの`tinyrack/proxer`とGHCRの`ghcr.io/tinyrack-net/
 docker run --rm tinyrack/proxer --version
 ```
 
-Dockerで公開Proxerサーバーを実行し、`8080`ポートを公開します。
+---
+
+## サーバーを実行する
 
 ```bash
-docker run --rm -p 8080:8080 tinyrack/proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+docker run --rm -p 8080:8080 tinyrack/proxer \
+  server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --token dev-token
 ```
 
-Linuxでは、コンテナがDockerホスト上のサービスへ到達する必要がある場合、host networkingでトンネルクライアントを実行します。
+サーバーにボリュームは不要です。トンネル登録はメモリ上にあり、クライアントが再接続すると再作成されます。
+
+---
+
+## Docker Compose
+
+```yaml
+services:
+  proxer:
+    image: ghcr.io/tinyrack-net/proxer:latest
+    command:
+      - server
+      - --listen
+      - 0.0.0.0:8080
+      - --domain
+      - proxy.example.com
+    environment:
+      PROXER_TOKEN: dev-token
+      PROXER_TRUSTED_PROXIES: loopback,private
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "proxer", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+```
+
+---
+
+## Kubernetesヘルスチェック
+
+プラットフォームがHTTPパスをprobeできる場合は、固定のヘルスエンドポイントを使います。
+
+```text
+/__proxer__/health/live
+/__proxer__/health/ready
+```
+
+制御エンドポイントも固定です。
+
+```text
+/__proxer__/control
+```
+
+---
+
+## 環境変数
+
+サーバーは`PROXER_`環境変数で設定できます。
 
 ```bash
-docker run --rm --network host tinyrack/proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+docker run --rm -p 8080:8080 \
+  -e PROXER_DOMAIN=proxy.example.com \
+  -e PROXER_TOKEN=dev-token \
+  -e PROXER_TRUSTED_PROXIES=loopback,private \
+  ghcr.io/tinyrack-net/proxer server
 ```
 
-macOSおよびWindows Docker Desktopでは、コンテナがホスト上のローカルサービスへ到達する必要がある場合、`127.0.0.1`ではなく`host.docker.internal`を使ってください。
+コンテナが管理下のreverse proxyからトラフィックを受ける場合は、`--trusted-proxy`または`PROXER_TRUSTED_PROXIES`を設定してください。

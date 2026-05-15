@@ -11,16 +11,75 @@ Check the image version:
 docker run --rm tinyrack/proxer --version
 ```
 
-Run a public Proxer server in Docker and publish port `8080`:
+---
+
+## Run a Server
 
 ```bash
-docker run --rm -p 8080:8080 tinyrack/proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+docker run --rm -p 8080:8080 tinyrack/proxer \
+  server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --token dev-token
 ```
 
-On Linux, run the tunnel client with host networking when it needs to reach a service on the Docker host:
+The server does not require a volume. Tunnel registrations live in memory and are recreated when clients reconnect.
+
+---
+
+## Docker Compose
+
+```yaml
+services:
+  proxer:
+    image: ghcr.io/tinyrack-net/proxer:latest
+    command:
+      - server
+      - --listen
+      - 0.0.0.0:8080
+      - --domain
+      - proxy.example.com
+    environment:
+      PROXER_TOKEN: dev-token
+      PROXER_TRUSTED_PROXIES: loopback,private
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "proxer", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+```
+
+---
+
+## Kubernetes Health Probes
+
+Use the fixed health endpoints when a platform can probe HTTP paths:
+
+```text
+/__proxer__/health/live
+/__proxer__/health/ready
+```
+
+The control endpoint is also fixed:
+
+```text
+/__proxer__/control
+```
+
+---
+
+## Environment Variables
+
+The server can be configured with `PROXER_` environment variables:
 
 ```bash
-docker run --rm --network host tinyrack/proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+docker run --rm -p 8080:8080 \
+  -e PROXER_DOMAIN=proxy.example.com \
+  -e PROXER_TOKEN=dev-token \
+  -e PROXER_TRUSTED_PROXIES=loopback,private \
+  ghcr.io/tinyrack-net/proxer server
 ```
 
-On macOS and Windows Docker Desktop, use `host.docker.internal` instead of `127.0.0.1` when the container needs to reach a local service on the host.
+Use `--trusted-proxy` flags or `PROXER_TRUSTED_PROXIES` when the container receives traffic from a reverse proxy you control.

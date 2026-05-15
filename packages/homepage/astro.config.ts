@@ -114,7 +114,11 @@ export default defineConfig({
             ko: "명령어 레퍼런스",
             ja: "コマンドリファレンス",
           },
-          items: [{ slug: "reference/server" }, { slug: "reference/http" }],
+          items: [
+            { slug: "reference/server" },
+            { slug: "reference/http" },
+            { slug: "reference/skill-install" },
+          ],
         },
       ],
     }),

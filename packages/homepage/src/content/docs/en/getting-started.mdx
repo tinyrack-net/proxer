@@ -1,45 +1,126 @@
 ---
 title: Getting Started
-description: Start a public Proxer server and expose a local HTTP service.
+description: Install Proxer and expose a local HTTP service in a few minutes.
 ---
 
-Start the public Proxer server:
+import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
-```bash
-proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
-```
+## Prerequisites
 
-Start a local app on the client machine:
+- A public machine that can receive HTTP/WebSocket traffic
+- A local HTTP service to expose
+- Node.js 24 or later if you install from npm
 
-```bash
-python3 -m http.server 3000 --bind 127.0.0.1
-```
+---
 
-Connect a tunnel client for the root domain route:
+## Installation
 
-```bash
-proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
-  --token dev-token
-```
+<Tabs>
+  <TabItem label="Windows">
 
-Then open the public listener with the configured root domain Host:
+    Download a standalone Windows executable from [GitHub Releases](https://github.com/tinyrack-net/proxer/releases).
 
-```bash
-curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
-```
+    ```powershell
+    proxer.exe --version
+    ```
 
-For a subdomain route, pass `--subdomain` on the client:
+  </TabItem>
+  <TabItem label="macOS / Linux">
 
-```bash
-proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
-  --subdomain demo \
-  --token dev-token
-```
+    ```bash
+    brew install tinyrack-net/tap/proxer
+    ```
 
-```bash
-curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
-```
+  </TabItem>
+  <TabItem label="npm">
 
-Requests for unregistered subdomains return `404`. Proxer does not route direct localhost or IP requests to a single connected client automatically.
+    npm works on every platform and can be used as a cross-platform fallback.
+
+    ```bash
+    npm install -g @tinyrack/proxer
+    ```
+
+  </TabItem>
+  <TabItem label="Docker">
+
+    ```bash
+    docker run --rm tinyrack/proxer --version
+    ```
+
+  </TabItem>
+</Tabs>
+
+---
+
+## Starting Fresh
+
+If this is your first time using Proxer, follow these steps to start one public server and expose one local service.
+
+<Steps>
+
+1. **Start the public server**
+
+   Run Proxer on the machine that receives public traffic.
+
+   ```bash
+   proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+   ```
+
+   The server listens for both public requests and tunnel control connections on the same port.
+
+2. **Start a local app**
+
+   On the client machine, start any HTTP service. This example uses Python's built-in server:
+
+   ```bash
+   python3 -m http.server 3000 --bind 127.0.0.1
+   ```
+
+3. **Connect the root-domain tunnel**
+
+   Omit `--subdomain` to register the root domain route.
+
+   ```bash
+   proxer http 3000 \
+     --server ws://your-server.example.com:8080 \
+     --token dev-token
+   ```
+
+4. **Test the root route**
+
+   ```bash
+   curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
+   ```
+
+5. **Use a subdomain route**
+
+   Start another client with `--subdomain` when you want a named route.
+
+   ```bash
+   proxer http 3000 \
+     --server ws://your-server.example.com:8080 \
+     --subdomain demo \
+     --token dev-token
+   ```
+
+   ```bash
+   curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+   ```
+
+</Steps>
+
+<Aside type="tip">
+  During local testing, the `Host` header decides which tunnel receives the request. In production, point your DNS or reverse proxy at the Proxer server and keep the original host header.
+</Aside>
+
+---
+
+## What's Next?
+
+Now that you have a tunnel running, explore the guides:
+
+- [How It Works](/en/guides/how-it-works/) — understand the control connection and request flow
+- [Routing and Trusted Proxies](/en/guides/routing/) — configure root domains, subdomains, and reverse proxies
+- [Docker](/en/guides/docker/) — run the public server from an OCI image
+- [proxer server](/en/reference/server/) — command reference for the server
+- [proxer http](/en/reference/http/) — command reference for tunnel clients

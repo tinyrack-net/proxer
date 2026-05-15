@@ -3,30 +3,80 @@ title: Routing and Trusted Proxies
 description: Route root and subdomain hosts, including deployments behind reverse proxies.
 ---
 
-Proxer routes public requests by the incoming host.
+Proxer routes public requests by host. This makes every route explicit and keeps unrelated clients isolated from each other.
 
-- A client without `--subdomain` registers the configured root domain.
-- A client with `--subdomain demo` registers `demo.<domain>`.
-- Unknown subdomains return `404`.
+---
 
-When Proxer runs behind Traefik or another reverse proxy, configure the TCP peer addresses that may supply `X-Forwarded-*` headers. Without trusted proxies, Proxer ignores forwarded host, protocol, and client IP headers for routing.
+## Root and Subdomain Routes
 
-```bash
-PROXER_LISTEN=0.0.0.0:8080 \
-PROXER_DOMAIN=proxy.intranet.example.com \
-PROXER_TRUSTED_PROXIES=private,loopback \
-PROXER_TOKEN=... \
-proxer server
-```
-
-Example client configuration through the proxy:
+Run the server with a public domain:
 
 ```bash
-PROXER_SERVER=wss://proxy.intranet.example.com \
-PROXER_CONTROL_PATH=/__proxer_control_7f3d9a2b__ \
-PROXER_SUBDOMAIN=demo \
-PROXER_TOKEN=... \
-proxer http 3000
+proxer server --listen 0.0.0.0:8080 --domain proxy.example.com --token dev-token
 ```
 
-Supported trusted proxy values are `loopback`, `private`, IP literals, and CIDR ranges. Only trust reverse proxies you control.
+A client without `--subdomain` registers the root route:
+
+```bash
+proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
+```
+
+Requests for `proxy.example.com` go to that client.
+
+A client with `--subdomain demo` registers `demo.proxy.example.com`:
+
+```bash
+proxer http 3000 --server ws://proxy.example.com:8080 --subdomain demo --token dev-token
+```
+
+Requests for unknown hosts return `404`.
+
+---
+
+## Local Testing
+
+When you test without DNS, pass the host explicitly:
+
+```bash
+curl -H 'Host: demo.proxy.example.com' http://127.0.0.1:8080/
+```
+
+Direct `localhost` or IP-based requests are not automatically routed to a connected client.
+
+---
+
+## Behind a Reverse Proxy
+
+If Traefik, Caddy, NGINX, or another reverse proxy sits in front of Proxer, keep the original host header. For Traefik, this usually means leaving `passHostHeader` enabled.
+
+Then tell Proxer which proxy addresses are trusted to provide forwarded headers:
+
+```bash
+proxer server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --trusted-proxy loopback \
+  --trusted-proxy private
+```
+
+The environment variable form is comma-separated:
+
+```bash
+PROXER_TRUSTED_PROXIES=loopback,private,10.42.0.0/16 proxer server --domain proxy.example.com
+```
+
+Trusted proxies may supply `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, and `X-Forwarded-Proto`. Untrusted peers are ignored for forwarded-header routing decisions.
+
+---
+
+## Reserved Internal Paths
+
+All Proxer internal endpoints live under `/__proxer__/`:
+
+```text
+/__proxer__/control
+/__proxer__/health/live
+/__proxer__/health/ready
+```
+
+Do not route these paths to your local app. They are handled by the public server itself.

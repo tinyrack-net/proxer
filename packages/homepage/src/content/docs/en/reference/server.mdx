@@ -1,33 +1,59 @@
 ---
 title: proxer server
-description: Start a single-port public and tunnel control listener.
+description: Start the public server and tunnel control listener.
 ---
 
 `proxer server` starts the public HTTP/WebSocket listener and the tunnel control endpoint on one port.
+
+---
+
+## Usage
 
 ```bash
 proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
 ```
 
-| CLI flag | Environment variable | Default |
-| --- | --- | --- |
-| `--listen <host:port>` | `PROXER_LISTEN` | `127.0.0.1:8080` |
-| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
-| `--domain <domain>` | `PROXER_DOMAIN` | unset |
-| `--token <token>` | `PROXER_TOKEN` | unset |
-| `--trusted-proxy <proxy>` | `PROXER_TRUSTED_PROXIES` | unset |
+---
 
-CLI flags have highest precedence, then `PROXER_` environment variables, then built-in defaults.
+## Options
 
-`--trusted-proxy` is a singular repeatable flag:
+- `--listen <address>` — listen address. Defaults to `0.0.0.0:8080`.
+- `--domain <domain>` — public root domain used to extract root and subdomain routes.
+- `--token <token>` — shared token required by tunnel clients. If omitted, only clients without a token match.
+- `--trusted-proxy <proxy>` — trusted reverse proxy preset, IP, or CIDR. Repeat the flag for multiple values.
 
-```bash
-proxer server \
-  --listen 0.0.0.0:8080 \
-  --domain proxy.example.com \
-  --trusted-proxy loopback \
-  --trusted-proxy private \
-  --token "$PROXER_TOKEN"
+Trusted proxy presets:
+
+- `loopback` — loopback addresses
+- `private` — private IPv4 ranges and unique-local IPv6 ranges
+
+---
+
+## Environment Variables
+
+- `PROXER_LISTEN` — default value for `--listen`
+- `PROXER_DOMAIN` — default value for `--domain`
+- `PROXER_TOKEN` — default value for `--token`
+- `PROXER_TRUSTED_PROXIES` — comma-separated trusted proxy values
+
+CLI flags take precedence over environment variables.
+
+---
+
+## Internal Endpoints
+
+The server reserves these fixed paths:
+
+```text
+/__proxer__/control
+/__proxer__/health/live
+/__proxer__/health/ready
 ```
 
-`PROXER_TRUSTED_PROXIES` is plural and comma-separated.
+The control path is not configurable.
+
+---
+
+## Notes
+
+Run the server on the public machine or behind a reverse proxy that preserves the original `Host` header. Unknown hosts return `404`.

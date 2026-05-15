@@ -1,31 +1,51 @@
 ---
 title: 동작 방식
-description: Proxer는 공개 트래픽과 터널 제어에 하나의 리스너를 사용합니다.
+description: Proxer는 하나의 리스너와 클라이언트 시작 WebSocket 터널을 사용합니다.
 ---
 
 Proxer는 하나의 HTTP/WebSocket 리스너를 사용합니다. 공개 트래픽은 이 리스너로 들어오고, 터널 클라이언트는 같은 포트의 예약된 제어 WebSocket 경로에 연결합니다.
 
-기본 제어 경로는 다음과 같습니다.
+예약된 내부 경로:
 
 ```text
-/__proxer_control_7f3d9a2b__
+/__proxer__/control
+/__proxer__/health/live
+/__proxer__/health/ready
 ```
 
-일반적으로 클라이언트에서 이 경로를 직접 입력할 필요는 없습니다. 서버 기본 URL만 전달하면 Proxer가 기본 제어 경로를 내부에서 붙입니다.
+이 경로들은 고정되어 있습니다. `--control-path` 옵션은 없습니다.
 
-```text
-HTTP requests                                  -> public HTTP proxy
-WebSocket upgrade /__proxer_control_7f3d9a2b__ -> tunnel control connection
-WebSocket upgrade on any other path            -> public WebSocket proxy
-```
+---
 
-단일 포트 모드에 TLS가 필수는 아니지만, 운영 환경에서는 보통 reverse proxy에서 TLS를 종료하고 클라이언트는 `wss://`로 연결합니다.
+## 제어 연결
 
-## Health probe
+터널 클라이언트는 WebSocket으로 `/__proxer__/control`에 연결합니다. 연결이 열리면 루트 경로 또는 서브도메인 경로를 등록합니다.
 
-Kubernetes liveness 및 readiness probe는 내장 엔드포인트를 사용할 수 있습니다. 터널이나 토큰은 필요하지 않습니다.
+공개 트래픽이 들어오면 서버는 stream ID를 만들고 요청 프레임을 제어 연결 위로 보냅니다. 클라이언트는 이 프레임을 로컬 HTTP 서비스로 전달하고, 응답 프레임을 다시 서버로 보냅니다. 각 스트림에는 고유한 `streamId`가 있으므로 여러 요청이 하나의 제어 연결을 공유할 수 있습니다.
 
-```text
-/__proxer/health/live
-/__proxer/health/ready
-```
+---
+
+## 요청 흐름
+
+1. 브라우저나 reverse proxy가 공개 Proxer 서버로 요청을 보냅니다.
+2. 서버는 `Host` 헤더를 읽고 일치하는 루트 또는 서브도메인 터널을 찾습니다.
+3. 서버는 요청을 위한 새 터널 스트림을 엽니다.
+4. 클라이언트는 요청을 로컬 서비스로 전달합니다.
+5. 응답 헤더와 본문 chunk가 같은 터널 스트림으로 돌아옵니다.
+6. 공개 서버는 원래 호출자에게 응답을 씁니다.
+
+HTTP 스트리밍과 Server-Sent Events는 chunk 단위로 전달됩니다. WebSocket 업그레이드는 양방향 터널 스트림으로 프록시됩니다.
+
+---
+
+## 재연결 동작
+
+이미 연결된 제어 연결이 끊기면 클라이언트는 활성 스트림을 정리하고 재연결을 시도합니다. 서버가 같은 URL로 다시 올라오면 클라이언트는 다시 등록됩니다.
+
+초기 시작은 더 엄격합니다. 서버가 내려간 상태에서 클라이언트를 시작하면 재연결 루프에 들어가기 전에 명령이 실패할 수 있습니다. 서버를 먼저 시작한 뒤 클라이언트를 시작하세요.
+
+---
+
+## Proxer가 추측하지 않는 것
+
+Proxer는 연결된 클라이언트가 하나뿐이라는 이유로 요청을 자동 전달하지 않습니다. 요청 호스트가 등록된 루트 도메인 또는 등록된 서브도메인과 일치해야 합니다. 그래서 여러 클라이언트를 함께 운영해도 예측 가능합니다.

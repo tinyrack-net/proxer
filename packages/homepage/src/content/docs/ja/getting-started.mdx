@@ -1,45 +1,126 @@
 ---
 title: はじめに
-description: 公開Proxerサーバーを開始し、ローカルHTTPサービスを公開します。
+description: 数分でProxerをインストールし、ローカルHTTPサービスを公開します。
 ---
 
-公開Proxerサーバーを開始します。
+import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
-```bash
-proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
-```
+## 前提条件
 
-クライアントマシンでローカルアプリを開始します。
+- HTTP/WebSocketトラフィックを受けられる公開マシン
+- 公開したいローカルHTTPサービス
+- npmでインストールする場合はNode.js 24以降
 
-```bash
-python3 -m http.server 3000 --bind 127.0.0.1
-```
+---
 
-ルートドメイン経路のトンネルクライアントを接続します。
+## インストール
 
-```bash
-proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
-  --token dev-token
-```
+<Tabs>
+  <TabItem label="Windows">
 
-設定したルートドメインの`Host`で公開リスナーを開きます。
+    [GitHub Releases](https://github.com/tinyrack-net/proxer/releases)からWindows用の単体実行ファイルをダウンロードします。
 
-```bash
-curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
-```
+    ```powershell
+    proxer.exe --version
+    ```
 
-サブドメイン経路を使う場合は、クライアントに`--subdomain`を渡します。
+  </TabItem>
+  <TabItem label="macOS / Linux">
 
-```bash
-proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
-  --subdomain demo \
-  --token dev-token
-```
+    ```bash
+    brew install tinyrack-net/tap/proxer
+    ```
 
-```bash
-curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
-```
+  </TabItem>
+  <TabItem label="npm">
 
-未登録のサブドメインへのリクエストは`404`を返します。ProxerはlocalhostやIPへの直接リクエストを、接続済みの単一クライアントへ自動的にはルーティングしません。
+    npmはすべてのプラットフォームで使えるクロスプラットフォームなインストール方法です。
+
+    ```bash
+    npm install -g @tinyrack/proxer
+    ```
+
+  </TabItem>
+  <TabItem label="Docker">
+
+    ```bash
+    docker run --rm tinyrack/proxer --version
+    ```
+
+  </TabItem>
+</Tabs>
+
+---
+
+## 新しく始める
+
+初めてProxerを使う場合は、次の手順で公開サーバーを1つ起動し、ローカルサービスを1つ公開します。
+
+<Steps>
+
+1. **公開サーバーを起動する**
+
+   公開トラフィックを受けるマシンでProxerを実行します。
+
+   ```bash
+   proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+   ```
+
+   このサーバーは同じポートで公開リクエストとトンネル制御接続を処理します。
+
+2. **ローカルアプリを起動する**
+
+   クライアントマシンでHTTPサービスを起動します。次の例ではPythonの組み込みサーバーを使います。
+
+   ```bash
+   python3 -m http.server 3000 --bind 127.0.0.1
+   ```
+
+3. **ルートドメインのトンネルを接続する**
+
+   `--subdomain`を省略すると、ルートドメインの経路として登録されます。
+
+   ```bash
+   proxer http 3000 \
+     --server ws://your-server.example.com:8080 \
+     --token dev-token
+   ```
+
+4. **ルート経路をテストする**
+
+   ```bash
+   curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
+   ```
+
+5. **サブドメイン経路を使う**
+
+   名前付きの経路が必要な場合は`--subdomain`を指定します。
+
+   ```bash
+   proxer http 3000 \
+     --server ws://your-server.example.com:8080 \
+     --subdomain demo \
+     --token dev-token
+   ```
+
+   ```bash
+   curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+   ```
+
+</Steps>
+
+<Aside type="tip">
+  ローカルでテストするときは、`Host`ヘッダーがどのトンネルへ送られるかを決めます。本番ではDNSまたはreverse proxyをProxerサーバーへ向け、元のHostヘッダーを保持してください。
+</Aside>
+
+---
+
+## 次に読むもの
+
+トンネルが動いたら、次のガイドを見てみましょう。
+
+- [仕組み](/ja/guides/how-it-works/) — 制御接続とリクエストの流れを理解する
+- [ルーティングと信頼済みプロキシ](/ja/guides/routing/) — ルートドメイン、サブドメイン、reverse proxyを設定する
+- [Docker](/ja/guides/docker/) — OCIイメージで公開サーバーを実行する
+- [proxer server](/ja/reference/server/) — サーバーコマンドのリファレンス
+- [proxer http](/ja/reference/http/) — トンネルクライアントのリファレンス

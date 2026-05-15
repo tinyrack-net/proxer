@@ -5,17 +5,59 @@ description: Expose a local HTTP service through a tunnel.
 
 `proxer http <port>` connects a client-initiated tunnel to a public Proxer server and forwards requests to a local HTTP port.
 
+---
+
+## Usage
+
 ```bash
 proxer http 3000 --server ws://your-server.example.com:8080 --subdomain demo --token dev-token
 ```
 
-| CLI flag | Environment variable | Default |
-| --- | --- | --- |
-| `--server <url>` | `PROXER_SERVER` | `ws://127.0.0.1:8080` |
-| `--control-path <path>` | `PROXER_CONTROL_PATH` | `/__proxer_control_7f3d9a2b__` |
-| `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | unset |
-| `--token <token>` | `PROXER_TOKEN` | unset |
+---
 
-The local port is positional and does not have an environment variable.
+## Options
 
-Use `ws://` for plain HTTP deployments and `wss://` when TLS is terminated by the public endpoint or reverse proxy.
+- `<port>` — local HTTP port to forward to. This positional argument has no environment variable.
+- `--server <url>` — public Proxer server URL. Proxer always connects to `/__proxer__/control` internally.
+- `--subdomain <name>` — register a subdomain route. Omit it to register the root domain route.
+- `--token <token>` — shared token matching the server.
+
+---
+
+## Environment Variables
+
+- `PROXER_SERVER` — default value for `--server`
+- `PROXER_SUBDOMAIN` — default value for `--subdomain`
+- `PROXER_TOKEN` — default value for `--token`
+
+CLI flags take precedence over environment variables.
+
+---
+
+## Root Route
+
+Omit `--subdomain`:
+
+```bash
+proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
+```
+
+Requests for `proxy.example.com` are sent to the local service.
+
+---
+
+## Subdomain Route
+
+Pass `--subdomain`:
+
+```bash
+proxer http 3000 --server ws://proxy.example.com:8080 --subdomain demo --token dev-token
+```
+
+Requests for `demo.proxy.example.com` are sent to the local service.
+
+---
+
+## Reconnect Behavior
+
+If an established control connection drops, the client retries and registers again when the server is reachable. If the initial connection fails before the client is registered, the command may exit.

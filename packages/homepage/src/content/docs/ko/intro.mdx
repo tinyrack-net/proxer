@@ -1,32 +1,54 @@
 ---
 title: Proxer
-description: HTTP, SSE, WebSocket 서비스를 위한 셀프 호스팅 reverse tunnel입니다.
+description: HTTP, SSE, WebSocket 서비스를 위한 셀프 호스팅 리버스 터널입니다.
 ---
 
-Proxer는 셀프 호스팅 개발 환경과 사설 인프라를 위한 ngrok/Pinggy 스타일 reverse tunnel입니다.
+`Proxer`는 **직접 운영하는 공개 서버를 통해 로컬 HTTP, Server-Sent Events, WebSocket 서비스를 노출하는 셀프 호스팅 리버스 터널 CLI**입니다.
 
-공개 Proxer 서버 하나를 실행한 뒤, 사설 네트워크의 터널 클라이언트를 연결합니다. 공개 HTTP 요청, Server-Sent Events, WebSocket 업그레이드는 클라이언트가 시작한 영구 WebSocket 제어 연결을 통해 전달되므로 로컬 서비스가 인터넷 인바운드 트래픽을 직접 받을 필요가 없습니다.
+---
 
-## 기능
+## 왜 Proxer인가요?
 
-- 공개 트래픽과 터널 제어를 처리하는 단일 포트 서버
-- 일반 응답과 장시간 응답을 위한 HTTP 스트리밍 프록시
-- 응답 본문을 버퍼링하지 않는 Server-Sent Events 지원
-- 실시간 앱을 위한 WebSocket 업그레이드 프록시
-- NAT 또는 사설 네트워크에서도 동작하는 클라이언트 시작 터널
-- 명시적인 공개 호스트를 위한 서브도메인 및 루트 도메인 라우팅
-- Node.js CLI에서 빌드되는 독립 실행 파일
+로컬 서비스마다 인바운드 포트를 여는 방식은 번거롭고 위험합니다. SSH 포워딩은 임시 작업에는 좋지만 팀과 공유하거나 안정적인 공개 호스트명으로 운영하기에는 불편합니다. 호스팅 터널 서비스는 편리하지만 제어 평면을 외부 서비스에 맡기게 됩니다.
 
-## 설치
+Proxer는 흐름을 단순하게 유지합니다. 공개 서버 하나를 실행한 뒤, 사설 네트워크의 클라이언트를 연결합니다. 각 클라이언트는 서버로 영구 WebSocket 제어 연결을 열고, 공개 요청은 그 클라이언트가 시작한 연결 위에서 다시 로컬 서비스로 전달됩니다. 로컬 앱은 `127.0.0.1`이나 사설 인터페이스에만 열어두면 됩니다.
+
+라우팅은 명시적입니다. `--subdomain`이 없는 클라이언트는 루트 도메인 경로를 처리합니다. `--subdomain demo`가 있는 클라이언트는 `demo.<domain>`을 처리합니다. 알 수 없는 호스트는 추측해서 보내지 않고 `404`를 반환합니다.
+
+---
+
+## 주요 기능
+
+- **단일 포트 서버**로 공개 HTTP 트래픽, WebSocket 업그레이드, 헬스 체크, 터널 제어 처리
+- **HTTP 스트리밍**으로 일반 응답과 오래 지속되는 응답 전달
+- 응답 본문을 버퍼링하지 않는 **Server-Sent Events** 지원
+- 실시간 로컬 앱을 위한 **WebSocket 프록시**
+- NAT 또는 사설 네트워크에서도 동작하는 **클라이언트 시작 터널**
+- 단일 클라이언트 fallback 없는 **루트 도메인 및 서브도메인 라우팅**
+- Traefik 같은 reverse proxy를 위한 **신뢰 프록시** 지원
+- **독립 실행 파일, npm, Homebrew, OCI 이미지** 배포
+- AI 에이전트가 Proxer 사용법을 읽을 수 있는 **스킬 설치 명령**
+
+---
+
+## 사용 예시
 
 ```bash
-npm install -g @tinyrack/proxer
+# 공개 서버 시작
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+
+# 로컬 앱을 서브도메인으로 노출
+proxer http 3000 \
+  --server ws://your-server.example.com:8080 \
+  --subdomain demo \
+  --token dev-token
+
+# 공개 요청을 터널로 전달
+curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
 ```
 
-```bash
-brew install tinyrack-net/tap/proxer
-```
+---
 
-사전 빌드된 독립 실행 파일은 [GitHub Releases](https://github.com/tinyrack-net/proxer/releases)에서 제공됩니다.
+## 다음 단계
 
-OCI 이미지는 `tinyrack/proxer` 및 `ghcr.io/tinyrack-net/proxer`로 게시됩니다.
+[시작하기](/ko/getting-started/)로 이동해 Proxer를 설치하고 첫 로컬 서비스를 노출해 보세요.

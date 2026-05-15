@@ -1,0 +1,57 @@
+---
+title: proxer skill install
+description: AIエージェント向けのProxerスキルファイルをインストールします。
+---
+
+`proxer skill install <directory>`は、AIエージェントがProxerワークフローを実行または説明するときに使える再利用可能なスキルファイルを書き込みます。
+
+---
+
+## 使い方
+
+```bash
+proxer skill install <directory>
+```
+
+このコマンドは次のファイルを書き込みます。
+
+```text
+<directory>/proxer.md
+```
+
+---
+
+## オプション
+
+- `--dry-run` — ディレクトリやファイルを作成せず、対象パスだけを表示します。
+- `--force` — 既存の`proxer.md`ファイルを上書きします。
+
+このコマンドに環境変数はありません。
+
+---
+
+## 例
+
+インストール先を確認します。
+
+```bash
+proxer skill install ./skills --dry-run
+```
+
+スキルをインストールします。
+
+```bash
+proxer skill install ./skills
+```
+
+既存のスキルファイルを更新します。
+
+```bash
+proxer skill install ./skills --force
+```
+
+---
+
+## 上書きの安全性
+
+`proxer.md`がすでに存在する場合、`--force`を指定しない限りコマンドは失敗します。ローカルのエージェント指示が誤って置き換えられないようにするためです。
