@@ -179,11 +179,6 @@ export async function performPkgBuild(options: {
     build: {
       copyPublicDir: false,
       emptyOutDir: false,
-      lib: {
-        entry: join(paths.distDirectory, "index.js"),
-        fileName: () => bundleFileName,
-        formats: ["es"],
-      },
       minify: false,
       outDir: paths.pkgOutputDirectory,
       reportCompressedSize: false,
@@ -199,9 +194,13 @@ export async function performPkgBuild(options: {
         },
       },
       sourcemap: false,
+      ssr: join(paths.distDirectory, "index.js"),
       target: "node24",
     },
     logLevel: "info",
+    ssr: {
+      noExternal: true,
+    },
   });
 
   validateBundleImports(await readFile(paths.bundlePath, "utf8"));

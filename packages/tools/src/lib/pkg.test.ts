@@ -4,9 +4,19 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const mockSpawnSync = vi.hoisted(() => vi.fn());
+const mockPkgExec = vi.hoisted(() => vi.fn());
+const mockViteBuild = vi.hoisted(() => vi.fn());
 
 vi.mock("node:child_process", () => ({
   spawnSync: mockSpawnSync,
+}));
+
+vi.mock("@yao-pkg/pkg", () => ({
+  exec: mockPkgExec,
+}));
+
+vi.mock("vite", () => ({
+  build: mockViteBuild,
 }));
 
 import {
@@ -14,6 +24,7 @@ import {
   createPkgConfig,
   getPkgPaths,
   isNodeBuiltinSpecifier,
+  performPkgBuild,
   performPkgSmoke,
 } from "./pkg.ts";
 
@@ -154,6 +165,51 @@ describe("createPkgConfig", () => {
         disableExperimentalSEAWarning: true,
       },
       compress: "GZip",
+    });
+  });
+});
+
+describe("performPkgBuild", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("configures Vite as an SSR Node bundle for pkg", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "proxer-pkg-build-"));
+    temporaryDirectories.push(repoRoot);
+    await mkdir(join(repoRoot, "packages", "cli", "dist"), { recursive: true });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    mockSpawnSync.mockReturnValue({
+      error: undefined,
+      signal: null,
+      stderr: "",
+      status: 0,
+      stdout: "",
+    });
+    mockViteBuild.mockImplementation(async (config: unknown) => {
+      const outDir = (config as { build: { outDir: string } }).build.outDir;
+      await writeFile(join(outDir, "proxer.mjs"), "console.log('bundle');\n");
+    });
+    mockPkgExec.mockResolvedValue(undefined);
+
+    await performPkgBuild({ repoRoot, target: "node24-linux-x64" });
+
+    const viteConfig = mockViteBuild.mock.calls[0]?.[0] as {
+      build: {
+        lib?: unknown;
+        rollupOptions: { output: { entryFileNames: string; format: string } };
+        ssr?: string;
+      };
+      ssr?: { noExternal?: boolean };
+    };
+    expect(viteConfig.build.ssr).toBe(
+      join(repoRoot, "packages", "cli", "dist", "index.js"),
+    );
+    expect(viteConfig.ssr?.noExternal).toBe(true);
+    expect(viteConfig.build.lib).toBeUndefined();
+    expect(viteConfig.build.rollupOptions.output).toEqual({
+      entryFileNames: "proxer.mjs",
+      format: "es",
     });
   });
 });
