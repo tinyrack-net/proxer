@@ -21,12 +21,18 @@
     }
   },
   "scripts": {
+    "cli": "node src/cli.ts",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "build": "pnpm run typecheck",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "typecheck:watch": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
-    "@yao-pkg/pkg": "^6.19.0"
+    "@stricli/core": "^1.2.7",
+    "@yao-pkg/pkg": "^6.19.0",
+    "execa": "^9.6.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",

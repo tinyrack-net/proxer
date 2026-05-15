@@ -63,7 +63,10 @@
     "coverage": "vitest run --coverage",
     "check": "pnpm run typecheck && biome check . && pnpm run test",
     "check:fix": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "release:patch": "proxer-tools release patch",
+    "release:minor": "proxer-tools release minor",
+    "release:major": "proxer-tools release major"
   },
   "devDependencies": {
     "@tinyrack/proxer-tools": "workspace:*",

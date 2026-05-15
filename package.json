@@ -8,8 +8,8 @@
     "build": "pnpm run -r --filter @tinyrack/* build",
     "typecheck": "pnpm run -r --if-present --filter @tinyrack/* typecheck",
     "test": "pnpm run -r --filter @tinyrack/* test",
-    "pkg:build": "pnpm --filter @tinyrack/proxer pkg:build",
-    "pkg:smoke": "pnpm --filter @tinyrack/proxer pkg:smoke",
+    "pkg:build": "pnpm --filter @tinyrack/proxer run pkg:build",
+    "pkg:smoke": "pnpm --filter @tinyrack/proxer run pkg:smoke",
     "ci:validate": "pnpm run build && pnpm run typecheck && pnpm run test && pnpm run format:check",
     "format": "biome format --write .",
     "format:check": "biome check ."

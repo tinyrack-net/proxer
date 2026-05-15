@@ -1,0 +1,21 @@
+name: proxer
+base: core24
+version: git
+summary: Reverse tunnel CLI for HTTP, SSE, and WebSocket traffic.
+description: |
+  Proxer creates client-initiated reverse tunnels for local HTTP services.
+confinement: classic
+grade: stable
+
+parts:
+  proxer:
+    plugin: dump
+    source: .
+    override-build: |
+      mkdir -p $CRAFT_PART_INSTALL/bin
+      cp proxer $CRAFT_PART_INSTALL/bin/
+      chmod +x $CRAFT_PART_INSTALL/bin/proxer
+
+apps:
+  proxer:
+    command: bin/proxer
