@@ -582,8 +582,7 @@ jobs:
   publish-winget:
     name: Publish WinGet
     needs: publish-release
-    if: false # Temporarily disabled until the first WinGet release is prepared
-    # if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     timeout-minutes: 15
     permissions:
