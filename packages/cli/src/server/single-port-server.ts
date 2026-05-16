@@ -126,6 +126,7 @@ export const startSinglePortServer = async ({
         upgradeSocket.once("close", () => upgradeSockets.delete(upgradeSocket));
       },
       registry,
+      streamTimeoutMs,
       trustedProxies,
     });
   });

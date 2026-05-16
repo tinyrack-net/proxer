@@ -18,16 +18,47 @@ vi.mock("#app/cli/run.ts", () => ({
 
 const createCapturedProcess = (
   env: Record<string, string | undefined> = {},
-): EventEmitter & RunCliOptions => {
+): EventEmitter &
+  RunCliOptions & {
+    result(): {
+      readonly exitCode: number | undefined;
+      readonly stderr: string;
+      readonly stdout: string;
+    };
+  } => {
+  const stderr = new PassThrough();
+  const stdout = new PassThrough();
+  const stderrChunks: Buffer[] = [];
+  const stdoutChunks: Buffer[] = [];
+  let exitCode: number | undefined;
   const process = new EventEmitter() as EventEmitter & RunCliOptions;
+
+  stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+  stdout.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
 
   Object.defineProperties(process, {
     env: { value: env },
-    stderr: { value: new PassThrough() },
-    stdout: { value: new PassThrough() },
+    exitCode: {
+      get() {
+        return exitCode;
+      },
+      set(value: number | undefined) {
+        exitCode = value;
+      },
+    },
+    stderr: { value: stderr },
+    stdout: { value: stdout },
   });
 
-  return process;
+  return Object.assign(process, {
+    result() {
+      return {
+        exitCode,
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+      };
+    },
+  });
 };
 
 const firstServerConfig = (): ServerConfig => {
@@ -161,6 +192,42 @@ describe("CLI PROXER_ environment options", () => {
       subdomain: "flag",
       token: "flag-secret",
     });
+  });
+
+  it.each([
+    ["dot", "bad.name", {}],
+    ["underscore", "bad_name", {}],
+    ["leading hyphen", undefined, { PROXER_SUBDOMAIN: "-bad" }],
+    ["trailing hyphen", "bad-", {}],
+    ["longer than 63 characters", "a".repeat(64), {}],
+  ])("rejects an HTTP subdomain with a %s", async (_case, subdomain, env) => {
+    const process = createCapturedProcess(env);
+    const args = subdomain
+      ? ["http", "3000", "--subdomain", subdomain]
+      : ["http", "3000"];
+
+    await runCli(args, process);
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
+    expect(process.result().exitCode).not.toBe(0);
+    expect(process.result().stdout).toBe("");
+    expect(process.result().stderr).toContain("subdomain must be a DNS label");
+  });
+
+  it("accepts a mixed-case HTTP subdomain flag and normalizes it", async () => {
+    await runCli(
+      [
+        "http",
+        "3000",
+        "--server",
+        "https://proxy.example.com",
+        "--subdomain",
+        "Mixed-Case",
+      ],
+      createCapturedProcess(),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({ subdomain: "mixed-case" });
   });
 
   it("does not accept the removed HTTP --control-path flag", async () => {

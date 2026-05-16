@@ -56,6 +56,8 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
 初めてProxerを使う場合は、次の手順で公開サーバーを1つ起動し、ローカルサービスを1つ公開します。
 
+以下の公開`wss://`および`https://`の例は、Proxerの前段にあるreverse proxyまたはload balancerでTLSを終端し、loopbackまたはprivate network経由でProxerへ転送することを前提にしています。
+
 <Steps>
 
 1. **公開サーバーを起動する**
@@ -82,14 +84,14 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
    ```bash
    proxer http 3000 \
-     --server ws://your-server.example.com:8080 \
+     --server wss://your-server.example.com \
      --token dev-token
    ```
 
 4. **ルート経路をテストする**
 
    ```bash
-   curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
+   curl https://your-server.example.com/
    ```
 
 5. **サブドメイン経路を使う**
@@ -98,16 +100,24 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
    ```bash
    proxer http 3000 \
-     --server ws://your-server.example.com:8080 \
+     --server wss://your-server.example.com \
      --subdomain demo \
      --token dev-token
    ```
 
    ```bash
-   curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+   curl https://demo.your-server.example.com/
    ```
 
 </Steps>
+
+<Aside type="tip">
+  インターネットに公開するデプロイでは、トンネルクライアントに`wss://`を使ってください。TLSはCaddy、Traefik、NGINX、またはロードバランサーで終端し、Proxerへはloopbackまたはprivate network経由で転送できます。
+</Aside>
+
+<Aside type="caution">
+  `dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
+</Aside>
 
 <Aside type="tip">
   ローカルでテストするときは、`Host`ヘッダーがどのトンネルへ送られるかを決めます。本番ではDNSまたはreverse proxyをProxerサーバーへ向け、元のHostヘッダーを保持してください。

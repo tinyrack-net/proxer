@@ -25,6 +25,8 @@ docker run --rm -p 8080:8080 tinyrack/proxer \
 
 サーバーにボリュームは不要です。トンネル登録はメモリ上にあり、クライアントが再接続すると再作成されます。
 
+`dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
+
 ---
 
 ## Docker Compose
@@ -40,7 +42,7 @@ services:
       - --domain
       - proxy.example.com
     environment:
-      PROXER_TOKEN: dev-token
+      PROXER_TOKEN: ${PROXER_TOKEN:?set PROXER_TOKEN}
       PROXER_TRUSTED_PROXIES: loopback,private
     ports:
       - "8080:8080"
@@ -76,6 +78,7 @@ services:
 
 ```bash
 docker run --rm -p 8080:8080 \
+  -e PROXER_LISTEN=0.0.0.0:8080 \
   -e PROXER_DOMAIN=proxy.example.com \
   -e PROXER_TOKEN=dev-token \
   -e PROXER_TRUSTED_PROXIES=loopback,private \

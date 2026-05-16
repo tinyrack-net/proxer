@@ -63,6 +63,10 @@ Run a public Proxer server in Docker and publish port 8080:
 docker run --rm -p 8080:8080 tinyrack/proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
 ```
 
+For internet-facing deployments, terminate TLS with Caddy, Traefik, NGINX, or a load balancer and forward HTTP/WebSocket traffic to Proxer over loopback or a private network.
+
+The `dev-token` value in examples is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
+
 On Linux, run the tunnel client with host networking when it needs to reach a service on the Docker host:
 
 ```bash
@@ -98,6 +102,8 @@ readinessProbe:
 
 ## Quick Start
 
+The public `wss://` and `https://` examples below assume TLS is terminated by a reverse proxy or load balancer in front of Proxer, forwarding to Proxer over loopback or a private network.
+
 Start the public Proxer server:
 
 ```bash
@@ -114,21 +120,21 @@ Connect a tunnel client for the root domain route:
 
 ```bash
 proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
+  --server wss://your-server.example.com \
   --token dev-token
 ```
 
 Then open the public listener with the configured root domain Host:
 
 ```bash
-curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
+curl https://your-server.example.com/
 ```
 
 Alternatively, connect a tunnel client for a specific subdomain:
 
 ```bash
 proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
+  --server wss://your-server.example.com \
   --subdomain demo \
   --token dev-token
 ```
@@ -136,10 +142,12 @@ proxer http 3000 \
 Then route by the matching subdomain Host:
 
 ```bash
-curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+curl https://demo.your-server.example.com/
 ```
 
 Requests for unregistered subdomains return 404. Proxer does not route direct localhost/IP requests to a single connected client automatically.
+
+The `dev-token` value in these examples is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
 
 ## Environment Variables
 
@@ -185,11 +193,11 @@ PROXER_TOKEN=secret \
 proxer server
 ```
 
-Supported trusted proxy values are `loopback`, `private`, IP literals, and CIDR ranges. Only trust reverse proxies you control.
+Supported trusted proxy values are `loopback`, `private`, IP literals, and CIDR ranges. Only trust reverse proxies you control. When `--trusted-proxy` or `PROXER_TRUSTED_PROXIES` is configured, that reverse proxy must overwrite or strip inbound `X-Forwarded-*` and `X-Real-IP` headers from external clients before forwarding to Proxer, because Proxer trusts those headers from configured TCP peers.
 
 ### Reverse Proxy / Traefik
 
-When Proxer runs behind Traefik or another reverse proxy, configure the TCP peer addresses that may supply `X-Forwarded-*` headers. Without trusted proxies, Proxer ignores forwarded host/protocol/client IP headers for routing.
+When Proxer runs behind Caddy, Traefik, NGINX, a load balancer, or another reverse proxy, terminate TLS there and forward to Proxer over loopback or a private network. Configure the TCP peer addresses that may supply `X-Forwarded-*` headers. The proxy must overwrite or strip inbound `X-Forwarded-*` and `X-Real-IP` headers from external clients before forwarding to Proxer, because Proxer trusts those headers from configured TCP peers. Without trusted proxies, Proxer ignores forwarded host/protocol/client IP headers for routing.
 
 ```bash
 PROXER_LISTEN=0.0.0.0:8080 \
@@ -226,7 +234,7 @@ WebSocket upgrade /__proxer__/control        -> tunnel control connection
 WebSocket upgrade outside /__proxer__/*      -> public WebSocket proxy
 ```
 
-TLS is not required for single-port mode:
+Single-port mode works with or without TLS. Use TLS for public deployments, typically terminated before Proxer:
 
 ```text
 http://host:8080 + ws://host:8080 -> no TLS

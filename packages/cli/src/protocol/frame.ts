@@ -1,3 +1,5 @@
+import { isTunnelSubdomain } from "#app/protocol/subdomain.ts";
+
 export type HeaderMap = Record<string, string | string[]>;
 
 export type RegisterFrame = {
@@ -129,13 +131,13 @@ export const isTunnelFrame = (value: unknown): value is TunnelFrame => {
     case "register":
       return (
         !hasRemovedNameField &&
-        (frame.subdomain === undefined || isNonEmptyString(frame.subdomain)) &&
+        (frame.subdomain === undefined || isTunnelSubdomain(frame.subdomain)) &&
         hasOptionalString(frame.token)
       );
     case "registered":
       return (
         !hasRemovedNameField &&
-        (frame.subdomain === undefined || isNonEmptyString(frame.subdomain))
+        (frame.subdomain === undefined || isTunnelSubdomain(frame.subdomain))
       );
     case "open":
       return (

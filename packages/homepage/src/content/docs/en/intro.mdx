@@ -39,13 +39,15 @@ proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev
 
 # Expose a local app on a subdomain
 proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
+  --server wss://your-server.example.com \
   --subdomain demo \
   --token dev-token
 
 # Send public traffic to the tunnel
-curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+curl https://demo.your-server.example.com/
 ```
+
+`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
 
 ---
 

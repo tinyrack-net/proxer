@@ -5,6 +5,7 @@ import { runHttpClient } from "#app/cli/run.ts";
 import {
   httpServerFlag,
   httpSubdomainFlag,
+  parseHttpSubdomain,
   tokenFlag,
 } from "#app/cli/shared-flags.ts";
 import { DEFAULT_HTTP_SERVER_URL } from "#app/config/constants.ts";
@@ -59,6 +60,7 @@ export const buildHttpCommand = () => {
           flags.server,
           readEnvString({ env, name: "PROXER_SERVER" }),
         ) ?? DEFAULT_HTTP_SERVER_URL;
+      const envSubdomain = readEnvString({ env, name: "PROXER_SUBDOMAIN" });
 
       await runHttpClient(
         {
@@ -66,7 +68,7 @@ export const buildHttpCommand = () => {
           serverUrl: resolveControlServerUrl({ server }),
           subdomain: preferFlag(
             flags.subdomain,
-            readEnvString({ env, name: "PROXER_SUBDOMAIN" })?.toLowerCase(),
+            envSubdomain ? parseHttpSubdomain(envSubdomain) : undefined,
           ),
           token: preferFlag(
             flags.token,

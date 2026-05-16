@@ -10,7 +10,9 @@ import type { TunnelRegistry } from "#app/server/stream-registry.ts";
 
 export type ControlServerOptions = {
   readonly address?: HostPort;
+  readonly maxPayloadBytes?: number;
   readonly registry: TunnelRegistry;
+  readonly registerTimeoutMs?: number;
   readonly token?: string;
 };
 
@@ -50,15 +52,29 @@ const isRegisterFrame = (frame: {
   return frame.type === "register";
 };
 
+const DEFAULT_REGISTER_TIMEOUT_MS = 7_500;
+const DEFAULT_MAX_PAYLOAD_BYTES = 1024 * 1024;
+
 export const createControlWebSocketServer = ({
+  maxPayloadBytes = DEFAULT_MAX_PAYLOAD_BYTES,
   registry,
+  registerTimeoutMs = DEFAULT_REGISTER_TIMEOUT_MS,
   token,
 }: Omit<ControlServerOptions, "address">): WebSocketServer => {
-  const webSocketServer = new WebSocketServer({ noServer: true });
+  const webSocketServer = new WebSocketServer({
+    maxPayload: maxPayloadBytes,
+    noServer: true,
+  });
 
   webSocketServer.on("connection", (socket) => {
     const connection = createWebSocketTunnelConnection(socket);
     let registeredRoute: TunnelRoute | undefined;
+    const registerTimer = setTimeout(() => {
+      void connection.close(1008, "Tunnel registration timed out");
+    }, registerTimeoutMs);
+    registerTimer.unref();
+
+    const clearRegisterTimer = () => clearTimeout(registerTimer);
 
     connection.onFrame((frame) => {
       if (registeredRoute) {
@@ -90,6 +106,7 @@ export const createControlWebSocketServer = ({
       }
 
       registeredRoute = route;
+      clearRegisterTimer();
       void connection.send({
         type: "registered",
         ...(route.type === "subdomain" ? { subdomain: route.subdomain } : {}),
@@ -97,6 +114,7 @@ export const createControlWebSocketServer = ({
     });
 
     connection.onClose(() => {
+      clearRegisterTimer();
       if (registeredRoute) {
         registry.unregister(registeredRoute, connection);
       }
@@ -108,13 +126,20 @@ export const createControlWebSocketServer = ({
 
 export const startControlServer = async ({
   address,
+  maxPayloadBytes,
   registry,
+  registerTimeoutMs,
   token,
 }: ControlServerOptions & {
   readonly address: HostPort;
 }): Promise<ControlServerHandle> => {
   const server = http.createServer();
-  const webSocketServer = createControlWebSocketServer({ registry, token });
+  const webSocketServer = createControlWebSocketServer({
+    maxPayloadBytes,
+    registry,
+    registerTimeoutMs,
+    token,
+  });
   server.on("upgrade", (request, socket, head) => {
     webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
       webSocketServer.emit("connection", webSocket, request);

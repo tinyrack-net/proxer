@@ -10,7 +10,7 @@ description: トンネル経由でローカルHTTPサービスを公開します
 ## 使い方
 
 ```bash
-proxer http 3000 --server ws://your-server.example.com:8080 --subdomain demo --token dev-token
+proxer http 3000 --server wss://your-server.example.com --subdomain demo --token dev-token
 ```
 
 ---
@@ -21,6 +21,10 @@ proxer http 3000 --server ws://your-server.example.com:8080 --subdomain demo --t
 - `--server <url>` — 公開ProxerサーバーURLです。Proxerは内部的に常に`/__proxer__/control`へ接続します。
 - `--subdomain <name>` — サブドメイン経路を登録します。省略するとルートドメイン経路を登録します。
 - `--token <token>` — サーバーと一致する共有トークンです。
+
+トークンを使う公開サーバーでは`wss://`を使ってください。TLSはCaddy、Traefik、NGINX、またはロードバランサーで終端し、Proxerへはloopbackまたはprivate network経由で転送できます。
+
+`dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
 
 ---
 
@@ -39,7 +43,7 @@ CLI flagは環境変数より優先されます。
 `--subdomain`を省略します。
 
 ```bash
-proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
+proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
 `proxy.example.com`へのリクエストはローカルサービスへ送られます。
@@ -51,7 +55,7 @@ proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
 `--subdomain`を指定します。
 
 ```bash
-proxer http 3000 --server ws://proxy.example.com:8080 --subdomain demo --token dev-token
+proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
 ```
 
 `demo.proxy.example.com`へのリクエストはローカルサービスへ送られます。

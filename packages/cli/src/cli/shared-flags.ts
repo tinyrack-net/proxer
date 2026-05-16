@@ -1,3 +1,20 @@
+import { ProxerError } from "#app/lib/error.ts";
+import {
+  isTunnelSubdomain,
+  normalizeTunnelSubdomain,
+  SUBDOMAIN_RULE_MESSAGE,
+} from "#app/protocol/subdomain.ts";
+
+export const parseHttpSubdomain = (input: string): string => {
+  const subdomain = normalizeTunnelSubdomain(input);
+
+  if (!isTunnelSubdomain(subdomain)) {
+    throw new ProxerError(SUBDOMAIN_RULE_MESSAGE);
+  }
+
+  return subdomain;
+};
+
 export const tokenFlag = {
   kind: "parsed" as const,
   parse: (input: string) => input,
@@ -17,7 +34,7 @@ export const httpServerFlag = {
   kind: "parsed" as const,
   parse: (input: string) => input,
   brief: "Tunnel server base URL.",
-  placeholder: "ws://host:port",
+  placeholder: "wss://host",
   optional: true as const,
 };
 
@@ -31,7 +48,7 @@ export const serverDomainFlag = {
 
 export const httpSubdomainFlag = {
   kind: "parsed" as const,
-  parse: (input: string) => input.toLowerCase(),
+  parse: parseHttpSubdomain,
   brief: "Subdomain used for host routing.",
   placeholder: "subdomain",
   optional: true as const,

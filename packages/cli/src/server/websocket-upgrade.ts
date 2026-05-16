@@ -16,6 +16,7 @@ import {
   type TunnelRoute,
 } from "#app/server/route-target.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
+import { DEFAULT_STREAM_TIMEOUT_MS } from "#app/server/stream-timeout.ts";
 import {
   parseTrustedProxyValues,
   type TrustedProxyConfig,
@@ -25,6 +26,7 @@ export type WebSocketUpgradeHandlerOptions = {
   readonly domain?: string;
   readonly registry: TunnelRegistry;
   readonly onSocket?: (socket: Duplex) => void;
+  readonly streamTimeoutMs?: number;
   readonly trustedProxies?: TrustedProxyConfig;
 };
 
@@ -58,12 +60,14 @@ const proxyWebSocketUpgrade = ({
   requestContext,
   request,
   socket,
+  streamTimeoutMs,
 }: {
   readonly connection: TunnelConnection;
   readonly head: Buffer;
   readonly requestContext: RequestContext;
   readonly request: http.IncomingMessage;
   readonly socket: Duplex;
+  readonly streamTimeoutMs: number;
 }): void => {
   const streamId = createStreamId();
   let cleanedUp = false;
@@ -113,7 +117,16 @@ const proxyWebSocketUpgrade = ({
     socket.off("close", onSocketClose);
     socket.off("end", onSocketClose);
     socket.off("error", onSocketError);
+    clearTimeout(responseStartTimer);
   };
+  const markResponseStarted = (): void => {
+    clearTimeout(responseStartTimer);
+  };
+  const responseStartTimer = setTimeout(() => {
+    cleanup();
+    sendCloseFrame();
+    socket.destroy();
+  }, streamTimeoutMs);
 
   removeFrameListener = connection.onFrame((frame) => {
     if (!("streamId" in frame) || frame.streamId !== streamId) {
@@ -121,6 +134,7 @@ const proxyWebSocketUpgrade = ({
     }
 
     if (frame.type === "data" && frame.direction === "response") {
+      markResponseStarted();
       socket.write(Buffer.from(frame.data, "base64"));
       return;
     }
@@ -169,6 +183,7 @@ export const handlePublicWebSocketUpgrade = (
     domain,
     onSocket,
     registry,
+    streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
     trustedProxies = parseTrustedProxyValues([]),
   }: WebSocketUpgradeHandlerOptions,
 ): void => {
@@ -203,6 +218,7 @@ export const handlePublicWebSocketUpgrade = (
     requestContext,
     request,
     socket,
+    streamTimeoutMs,
   });
 };
 

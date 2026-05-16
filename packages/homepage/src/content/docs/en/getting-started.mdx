@@ -56,6 +56,8 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
 If this is your first time using Proxer, follow these steps to start one public server and expose one local service.
 
+The public `wss://` and `https://` examples below assume TLS is terminated by a reverse proxy or load balancer in front of Proxer, forwarding to Proxer over loopback or a private network.
+
 <Steps>
 
 1. **Start the public server**
@@ -82,14 +84,14 @@ If this is your first time using Proxer, follow these steps to start one public 
 
    ```bash
    proxer http 3000 \
-     --server ws://your-server.example.com:8080 \
+     --server wss://your-server.example.com \
      --token dev-token
    ```
 
 4. **Test the root route**
 
    ```bash
-   curl -H 'Host: your-server.example.com' http://your-server.example.com:8080/
+   curl https://your-server.example.com/
    ```
 
 5. **Use a subdomain route**
@@ -98,16 +100,24 @@ If this is your first time using Proxer, follow these steps to start one public 
 
    ```bash
    proxer http 3000 \
-     --server ws://your-server.example.com:8080 \
+     --server wss://your-server.example.com \
      --subdomain demo \
      --token dev-token
    ```
 
    ```bash
-   curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+   curl https://demo.your-server.example.com/
    ```
 
 </Steps>
+
+<Aside type="tip">
+  For internet-facing deployments, use `wss://` for tunnel clients. Terminate TLS with Caddy, Traefik, NGINX, or a load balancer and forward traffic to Proxer over loopback or a private network.
+</Aside>
+
+<Aside type="caution">
+  `dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
+</Aside>
 
 <Aside type="tip">
   During local testing, the `Host` header decides which tunnel receives the request. In production, point your DNS or reverse proxy at the Proxer server and keep the original host header.

@@ -43,6 +43,19 @@ const waitForClose = async (socket: WebSocket) => {
   });
 };
 
+const nextClose = async (socket: WebSocket) => {
+  return await new Promise<{ code: number; reason: string }>((resolve) => {
+    socket.once("close", (code, reason) =>
+      resolve({ code, reason: reason.toString("utf8") }),
+    );
+  });
+};
+
+const failAfter = async (timeoutMs: number): Promise<never> => {
+  await new Promise((resolve) => setTimeout(resolve, timeoutMs));
+  throw new Error("Timed out waiting for close");
+};
+
 const waitForCondition = async (
   predicate: () => boolean,
   timeoutMs = 1_000,
@@ -113,6 +126,72 @@ describe("control server", () => {
 
     await expect(nextMessage(socket)).resolves.toEqual({ type: "registered" });
     expect(registry.get({ type: "root" })?.route).toEqual({ type: "root" });
+  });
+
+  it("rejects an invalid registration subdomain without registering it", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    socket.send(encodeFrame({ type: "register", subdomain: "bad.name" }));
+
+    await expect(
+      Promise.race([nextClose(socket), failAfter(100)]),
+    ).resolves.toEqual({
+      code: 1002,
+      reason: "Invalid tunnel frame",
+    });
+    expect(
+      registry.get({ type: "subdomain", subdomain: "bad.name" }),
+    ).toBeUndefined();
+    expect(registry.get({ type: "root" })).toBeUndefined();
+  });
+
+  it("closes a connection when no register frame arrives before the deadline", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+      registerTimeoutMs: 20,
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    await expect(nextClose(socket)).resolves.toEqual({
+      code: 1008,
+      reason: "Tunnel registration timed out",
+    });
+    expect(registry.get({ type: "root" })).toBeUndefined();
+  });
+
+  it("keeps a connection open when registration arrives before the deadline", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+      registerTimeoutMs: 100,
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    socket.send(encodeFrame({ type: "register", subdomain: "demo" }));
+
+    await expect(nextMessage(socket)).resolves.toEqual({
+      type: "registered",
+      subdomain: "demo",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(socket.readyState).toBe(WebSocket.OPEN);
+    expect(
+      registry.get({ type: "subdomain", subdomain: "demo" })?.route,
+    ).toEqual({ type: "subdomain", subdomain: "demo" });
   });
 
   it("rejects registration with a mismatched token", async () => {

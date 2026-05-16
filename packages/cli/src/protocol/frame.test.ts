@@ -68,6 +68,17 @@ describe("tunnel frame validation", () => {
     expect(isTunnelFrame({ type: "registered", subdomain: "" })).toBe(false);
   });
 
+  it.each([
+    "bad.name",
+    "bad_name",
+    "-bad",
+    "bad-",
+    "a".repeat(64),
+  ])("rejects invalid registration subdomain %s", (subdomain) => {
+    expect(isTunnelFrame({ type: "register", subdomain })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", subdomain })).toBe(false);
+  });
+
   it("requires open frames to include stream id, kind, method, and path", () => {
     expect(
       isTunnelFrame({

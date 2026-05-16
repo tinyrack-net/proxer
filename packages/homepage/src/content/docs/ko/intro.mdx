@@ -39,13 +39,15 @@ proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev
 
 # 로컬 앱을 서브도메인으로 노출
 proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
+  --server wss://your-server.example.com \
   --subdomain demo \
   --token dev-token
 
 # 공개 요청을 터널로 전달
-curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+curl https://demo.your-server.example.com/
 ```
+
+`dev-token`은 데모/로컬 테스트용입니다. 실제 배포에서는 긴 난수 토큰을 `PROXER_TOKEN`, Docker/Kubernetes secret, 또는 플랫폼의 secret 메커니즘으로 전달하세요. CLI 인자는 shell history나 process list에 노출될 수 있습니다.
 
 ---
 

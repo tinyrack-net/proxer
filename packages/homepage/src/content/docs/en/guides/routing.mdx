@@ -18,7 +18,7 @@ proxer server --listen 0.0.0.0:8080 --domain proxy.example.com --token dev-token
 A client without `--subdomain` registers the root route:
 
 ```bash
-proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
+proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
 Requests for `proxy.example.com` go to that client.
@@ -26,10 +26,12 @@ Requests for `proxy.example.com` go to that client.
 A client with `--subdomain demo` registers `demo.proxy.example.com`:
 
 ```bash
-proxer http 3000 --server ws://proxy.example.com:8080 --subdomain demo --token dev-token
+proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
 ```
 
 Requests for unknown hosts return `404`.
+
+`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
 
 ---
 
@@ -47,7 +49,7 @@ Direct `localhost` or IP-based requests are not automatically routed to a connec
 
 ## Behind a Reverse Proxy
 
-If Traefik, Caddy, NGINX, or another reverse proxy sits in front of Proxer, keep the original host header. For Traefik, this usually means leaving `passHostHeader` enabled.
+If Traefik, Caddy, NGINX, a load balancer, or another reverse proxy sits in front of Proxer, terminate TLS there and forward HTTP/WebSocket traffic to Proxer over loopback or a private network. Keep the original host header. For Traefik, this usually means leaving `passHostHeader` enabled.
 
 Then tell Proxer which proxy addresses are trusted to provide forwarded headers:
 
@@ -65,7 +67,7 @@ The environment variable form is comma-separated:
 PROXER_TRUSTED_PROXIES=loopback,private,10.42.0.0/16 proxer server --domain proxy.example.com
 ```
 
-Trusted proxies may supply `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, and `X-Forwarded-Proto`. Untrusted peers are ignored for forwarded-header routing decisions.
+Trusted proxies may supply `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, and `X-Forwarded-Proto`. When `--trusted-proxy` or `PROXER_TRUSTED_PROXIES` is configured, the reverse proxy must overwrite or strip inbound `X-Forwarded-*` and `X-Real-IP` headers from external clients before forwarding to Proxer, because Proxer trusts those headers from configured TCP peers. Untrusted peers are ignored for forwarded-header routing decisions.
 
 ---
 

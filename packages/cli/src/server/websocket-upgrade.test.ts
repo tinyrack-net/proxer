@@ -113,6 +113,23 @@ const connectRawUpgrade = async (
   };
 };
 
+const waitForSocketClose = async (socket: net.Socket): Promise<void> => {
+  await new Promise<void>((resolve) => {
+    if (socket.destroyed) {
+      resolve();
+      return;
+    }
+
+    socket.once("close", () => resolve());
+  });
+};
+
+const rejectAfter = (timeoutMs: number, message: string): Promise<never> => {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+};
+
 describe("public WebSocket upgrade tunneling", () => {
   const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -187,6 +204,48 @@ describe("public WebSocket upgrade tunneling", () => {
     );
 
     expect(requestDataFrame).toMatchObject({ streamId: openFrame.streamId });
+  });
+
+  it("closes websocket upgrades when the tunnel does not send a handshake response", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+      streamTimeoutMs: 10,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(handle.url);
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+    if (openFrame.type !== "open") {
+      throw new Error("expected websocket open frame");
+    }
+
+    await Promise.race([
+      waitForSocketClose(rawClient.socket),
+      rejectAfter(250, "expected websocket upgrade socket to close"),
+    ]);
+    await expect(
+      Promise.race([
+        connection.waitForSentFrame(
+          (frame) =>
+            frame.type === "close" &&
+            "streamId" in frame &&
+            frame.streamId === openFrame.streamId,
+        ),
+        rejectAfter(250, "expected websocket tunnel close frame"),
+      ]),
+    ).resolves.toMatchObject({ streamId: openFrame.streamId, type: "close" });
   });
 
   it("does not route an unknown websocket host to the only tunnel", async () => {

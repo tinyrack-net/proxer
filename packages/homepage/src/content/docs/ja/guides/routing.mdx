@@ -18,7 +18,7 @@ proxer server --listen 0.0.0.0:8080 --domain proxy.example.com --token dev-token
 `--subdomain`なしのクライアントはルート経路を登録します。
 
 ```bash
-proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
+proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
 `proxy.example.com`へのリクエストはこのクライアントへ送られます。
@@ -26,10 +26,12 @@ proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
 `--subdomain demo`を指定したクライアントは`demo.proxy.example.com`を登録します。
 
 ```bash
-proxer http 3000 --server ws://proxy.example.com:8080 --subdomain demo --token dev-token
+proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
 ```
 
 不明なホストへのリクエストは`404`を返します。
+
+`dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
 
 ---
 
@@ -47,7 +49,7 @@ curl -H 'Host: demo.proxy.example.com' http://127.0.0.1:8080/
 
 ## Reverse Proxyの背後で実行する
 
-Traefik、Caddy、NGINXなどのreverse proxyをProxerの前に置く場合は、元のHostヘッダーを保持してください。Traefikでは通常、`passHostHeader`を有効にしたデフォルト動作のままで問題ありません。
+Traefik、Caddy、NGINX、ロードバランサーなどのreverse proxyをProxerの前に置く場合は、そこでTLSを終端し、HTTP/WebSocketトラフィックをloopbackまたはprivate network経由でProxerへ転送してください。元のHostヘッダーも保持してください。Traefikでは通常、`passHostHeader`を有効にしたデフォルト動作のままで問題ありません。
 
 次に、どのプロキシアドレスからのforwardedヘッダーを信頼するかをProxerへ伝えます。
 
@@ -65,7 +67,7 @@ proxer server \
 PROXER_TRUSTED_PROXIES=loopback,private,10.42.0.0/16 proxer server --domain proxy.example.com
 ```
 
-信頼済みプロキシは`X-Forwarded-For`、`X-Real-IP`、`X-Forwarded-Host`、`X-Forwarded-Proto`を提供できます。信頼していないpeerからのforwardedヘッダーは、ルーティング判断に使われません。
+信頼済みプロキシは`X-Forwarded-For`、`X-Real-IP`、`X-Forwarded-Host`、`X-Forwarded-Proto`を提供できます。`--trusted-proxy`または`PROXER_TRUSTED_PROXIES`を設定した場合、reverse proxyは外部クライアントから届いた`X-Forwarded-*`と`X-Real-IP`ヘッダーをProxerへ転送する前に上書きまたは削除する必要があります。Proxerは設定済みTCP peerからのこれらのヘッダーを信頼するためです。信頼していないpeerからのforwardedヘッダーは、ルーティング判断に使われません。
 
 ---
 

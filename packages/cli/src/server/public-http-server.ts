@@ -19,11 +19,14 @@ import {
   type TunnelRoute,
 } from "#app/server/route-target.ts";
 import type { TunnelRegistry } from "#app/server/stream-registry.ts";
+import { DEFAULT_STREAM_TIMEOUT_MS } from "#app/server/stream-timeout.ts";
 import {
   parseTrustedProxyValues,
   type TrustedProxyConfig,
 } from "#app/server/trusted-proxies.ts";
 import { attachWebSocketUpgradeHandler } from "#app/server/websocket-upgrade.ts";
+
+export { DEFAULT_STREAM_TIMEOUT_MS };
 
 export type PublicHttpServerOptions = {
   readonly address: HostPort;
@@ -37,8 +40,6 @@ export type PublicHttpServerHandle = {
   readonly url: string;
   close(): Promise<void>;
 };
-
-export const DEFAULT_STREAM_TIMEOUT_MS = 30_000;
 
 const listen = async (
   server: http.Server,
@@ -344,6 +345,7 @@ export const startPublicHttpServer = async ({
     },
     domain,
     registry,
+    streamTimeoutMs,
     trustedProxies,
   });
 

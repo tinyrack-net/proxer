@@ -25,6 +25,8 @@ docker run --rm -p 8080:8080 tinyrack/proxer \
 
 The server does not require a volume. Tunnel registrations live in memory and are recreated when clients reconnect.
 
+`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
+
 ---
 
 ## Docker Compose
@@ -40,7 +42,7 @@ services:
       - --domain
       - proxy.example.com
     environment:
-      PROXER_TOKEN: dev-token
+      PROXER_TOKEN: ${PROXER_TOKEN:?set PROXER_TOKEN}
       PROXER_TRUSTED_PROXIES: loopback,private
     ports:
       - "8080:8080"
@@ -76,6 +78,7 @@ The server can be configured with `PROXER_` environment variables:
 
 ```bash
 docker run --rm -p 8080:8080 \
+  -e PROXER_LISTEN=0.0.0.0:8080 \
   -e PROXER_DOMAIN=proxy.example.com \
   -e PROXER_TOKEN=dev-token \
   -e PROXER_TRUSTED_PROXIES=loopback,private \

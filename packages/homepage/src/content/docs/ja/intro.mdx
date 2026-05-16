@@ -39,13 +39,15 @@ proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev
 
 # ローカルアプリをサブドメインで公開
 proxer http 3000 \
-  --server ws://your-server.example.com:8080 \
+  --server wss://your-server.example.com \
   --subdomain demo \
   --token dev-token
 
 # 公開リクエストをトンネルへ送る
-curl -H 'Host: demo.your-server.example.com' http://your-server.example.com:8080/
+curl https://demo.your-server.example.com/
 ```
+
+`dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
 
 ---
 

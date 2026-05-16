@@ -17,15 +17,19 @@ proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev
 
 ## 옵션
 
-- `--listen <address>` — 리슨 주소입니다. 기본값은 `0.0.0.0:8080`입니다.
+- `--listen <address>` — 리슨 주소입니다. 기본값은 `127.0.0.1:8080`입니다. `0.0.0.0:8080`은 모든 interface에 Proxer를 직접 노출하려는 명시적 선택일 때만 사용하세요. 그 외에는 loopback에 bind하고 reverse proxy를 통해 공개하세요.
 - `--domain <domain>` — 루트 및 서브도메인 경로를 추출할 공개 루트 도메인입니다.
 - `--token <token>` — 터널 클라이언트와 공유하는 토큰입니다. 생략하면 토큰이 없는 클라이언트와만 일치합니다.
 - `--trusted-proxy <proxy>` — 신뢰할 reverse proxy preset, IP, CIDR입니다. 여러 값을 지정하려면 flag를 반복합니다.
+
+`dev-token`은 데모/로컬 테스트용입니다. 실제 배포에서는 긴 난수 토큰을 `PROXER_TOKEN`, Docker/Kubernetes secret, 또는 플랫폼의 secret 메커니즘으로 전달하세요. CLI 인자는 shell history나 process list에 노출될 수 있습니다.
 
 신뢰 프록시 preset:
 
 - `loopback` — loopback 주소
 - `private` — 사설 IPv4 대역과 unique-local IPv6 대역
+
+`--trusted-proxy` 또는 `PROXER_TRUSTED_PROXIES`를 설정했다면 reverse proxy는 외부 클라이언트가 보낸 `X-Forwarded-*`와 `X-Real-IP` 헤더를 Proxer로 전달하기 전에 덮어쓰거나 제거해야 합니다. Proxer는 설정된 TCP peer에서 온 이 헤더들을 신뢰하기 때문입니다.
 
 ---
 

@@ -10,7 +10,7 @@ description: Expose a local HTTP service through a tunnel.
 ## Usage
 
 ```bash
-proxer http 3000 --server ws://your-server.example.com:8080 --subdomain demo --token dev-token
+proxer http 3000 --server wss://your-server.example.com --subdomain demo --token dev-token
 ```
 
 ---
@@ -21,6 +21,10 @@ proxer http 3000 --server ws://your-server.example.com:8080 --subdomain demo --t
 - `--server <url>` — public Proxer server URL. Proxer always connects to `/__proxer__/control` internally.
 - `--subdomain <name>` — register a subdomain route. Omit it to register the root domain route.
 - `--token <token>` — shared token matching the server.
+
+For public servers with tokens, use `wss://`. TLS can terminate at Caddy, Traefik, NGINX, or a load balancer and forward to Proxer over loopback or a private network.
+
+`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
 
 ---
 
@@ -39,7 +43,7 @@ CLI flags take precedence over environment variables.
 Omit `--subdomain`:
 
 ```bash
-proxer http 3000 --server ws://proxy.example.com:8080 --token dev-token
+proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
 Requests for `proxy.example.com` are sent to the local service.
@@ -51,7 +55,7 @@ Requests for `proxy.example.com` are sent to the local service.
 Pass `--subdomain`:
 
 ```bash
-proxer http 3000 --server ws://proxy.example.com:8080 --subdomain demo --token dev-token
+proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
 ```
 
 Requests for `demo.proxy.example.com` are sent to the local service.
