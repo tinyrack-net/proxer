@@ -39,6 +39,25 @@ describe("skill installer", () => {
     expect(content).toContain("/__proxer__/control");
   });
 
+  it("installs detailed current CLI usage guidance", async () => {
+    const directory = path.join(await createTempDirectory(), "skills");
+
+    await installProxerSkill({ directory });
+    const content = await readFile(path.join(directory, "proxer.md"), "utf8");
+
+    for (const snippet of [
+      "If `--token` and `PROXER_TOKEN` are omitted, the server auto-generates a strong token and prints it as `token: ...`.",
+      "Since v0.8, `proxer http` requires a client token; without `--token` or `PROXER_TOKEN`, it fails with `token is required`.",
+      "`--trusted-proxy <proxy>` is repeatable; `PROXER_TRUSTED_PROXIES` is comma-separated.",
+      "For public deployments, put Proxer behind TLS and use `wss://`/`https://` externally.",
+      "Docker Hub: `tinyrack/proxer`; GHCR: `ghcr.io/tinyrack-net/proxer`.",
+      "Kubernetes liveness/readiness probes: `/__proxer__/health/live` and `/__proxer__/health/ready`.",
+      "There is no configurable control path; do not invent or pass `--control-path`.",
+    ]) {
+      expect(content).toContain(snippet);
+    }
+  });
+
   it("refuses to overwrite without force", async () => {
     const directory = await createTempDirectory();
     const targetPath = path.join(directory, "proxer.md");
