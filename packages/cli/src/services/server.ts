@@ -1,4 +1,6 @@
+import { randomBytes } from "node:crypto";
 import type { HostPort } from "#app/lib/address.ts";
+import { ProxerError } from "#app/lib/error.ts";
 import { startSinglePortServer } from "#app/server/single-port-server.ts";
 import { TunnelRegistry } from "#app/server/stream-registry.ts";
 import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
@@ -13,8 +15,11 @@ export type ServerConfig = {
 export type RunningServer = {
   readonly publicUrl: string;
   readonly controlUrl: string;
+  readonly token: string;
   close(): Promise<void>;
 };
+
+const generateToken = (): string => randomBytes(32).toString("base64url");
 
 export const startServer = async ({
   domain,
@@ -22,12 +27,18 @@ export const startServer = async ({
   token,
   trustedProxies,
 }: ServerConfig): Promise<RunningServer> => {
+  const serverToken = token?.trim() ?? generateToken();
+  if (!serverToken) {
+    throw new ProxerError("token must not be empty");
+  }
+
   const registry = new TunnelRegistry();
-  return await startSinglePortServer({
+  const server = await startSinglePortServer({
     domain,
     listenAddress,
     registry,
-    token,
+    token: serverToken,
     trustedProxies: parseTrustedProxyValues(trustedProxies ?? []),
   });
+  return { ...server, token: serverToken };
 };

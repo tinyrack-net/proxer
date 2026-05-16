@@ -1,0 +1,67 @@
+import { describe, expect, it } from "vitest";
+import { type RawData, WebSocket } from "ws";
+import type { HostPort } from "#app/lib/address.ts";
+import { decodeFrame, encodeFrame } from "#app/protocol/frame-codec.ts";
+import { startServer } from "#app/services/server.ts";
+
+const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
+
+const openWebSocket = async (url: string): Promise<WebSocket> => {
+  const socket = new WebSocket(url);
+  await new Promise<void>((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+  return socket;
+};
+
+const nextMessage = async (socket: WebSocket) => {
+  const data = await new Promise<RawData>((resolve) => {
+    socket.once("message", resolve);
+  });
+
+  if (Buffer.isBuffer(data)) {
+    return decodeFrame(data);
+  }
+
+  if (Array.isArray(data)) {
+    return decodeFrame(Buffer.concat(data));
+  }
+
+  return decodeFrame(Buffer.from(new Uint8Array(data)));
+};
+
+const nextClose = async (socket: WebSocket) => {
+  return await new Promise<{ code: number; reason: string }>((resolve) => {
+    socket.once("close", (code, reason) =>
+      resolve({ code, reason: reason.toString("utf8") }),
+    );
+  });
+};
+
+describe("server service", () => {
+  it("generates a strong token when none is configured", async () => {
+    const server = await startServer({ listenAddress: randomAddress });
+    const token = (server as { readonly token?: string }).token;
+
+    try {
+      expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+
+      const unauthenticatedSocket = await openWebSocket(server.controlUrl);
+      unauthenticatedSocket.send(encodeFrame({ type: "register" }));
+      await expect(nextClose(unauthenticatedSocket)).resolves.toEqual({
+        code: 1008,
+        reason: "Invalid tunnel token",
+      });
+
+      const authenticatedSocket = await openWebSocket(server.controlUrl);
+      authenticatedSocket.send(encodeFrame({ type: "register", token }));
+      await expect(nextMessage(authenticatedSocket)).resolves.toEqual({
+        type: "registered",
+      });
+      authenticatedSocket.close();
+    } finally {
+      await server.close();
+    }
+  });
+});

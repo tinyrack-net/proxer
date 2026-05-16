@@ -44,4 +44,17 @@ describe("parseTunnelRouteFromHost", () => {
       subdomain: "127",
     });
   });
+
+  it.each([
+    "",
+    ":8080",
+    "demo.localhost:http",
+    "demo.localhost:8080:extra",
+    "[::1]",
+    "[::1]:8080",
+    "::1",
+  ])("does not salvage malformed host authority %j", (host) => {
+    expect(parseTunnelRouteFromHost(host)).toBeUndefined();
+    expect(parseTunnelRouteFromHost(host, "localhost")).toBeUndefined();
+  });
 });

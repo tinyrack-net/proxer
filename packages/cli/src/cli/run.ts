@@ -77,6 +77,7 @@ export const runServer = async (
   try {
     logger.info(`public: ${server.publicUrl}`);
     logger.info(`control: ${server.controlUrl}`);
+    logger.info(`token: ${server.token}`);
     await waitForShutdownSignal(process);
   } finally {
     await server.close();

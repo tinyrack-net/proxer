@@ -1,4 +1,4 @@
-import type { RawData, WebSocket } from "ws";
+import { type RawData, WebSocket } from "ws";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import {
   decodeFrame,
@@ -83,8 +83,16 @@ export const createWebSocketTunnelConnection = (
       });
     },
     async close(code, reason) {
+      if (socket.readyState === WebSocket.CLOSED) {
+        return;
+      }
+
       await new Promise<void>((resolve) => {
         socket.once("close", () => resolve());
+        if (socket.readyState === WebSocket.CLOSING) {
+          return;
+        }
+
         socket.close(code, reason);
       });
     },

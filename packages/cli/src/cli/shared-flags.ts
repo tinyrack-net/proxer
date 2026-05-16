@@ -15,9 +15,18 @@ export const parseHttpSubdomain = (input: string): string => {
   return subdomain;
 };
 
+export const parseToken = (input: string): string => {
+  const token = input.trim();
+  if (!token) {
+    throw new ProxerError("token must not be empty");
+  }
+
+  return token;
+};
+
 export const tokenFlag = {
   kind: "parsed" as const,
-  parse: (input: string) => input,
+  parse: parseToken,
   brief: "Token required by the tunnel server.",
   optional: true as const,
 };

@@ -44,6 +44,38 @@ const firstValidForwardedIp = (
   return undefined;
 };
 
+const validForwardedIps = (
+  value: string | string[] | undefined,
+): readonly string[] => {
+  const values = Array.isArray(value) ? value : value ? [value] : [];
+
+  return values.flatMap((item) =>
+    item
+      .split(",")
+      .map((candidate) => candidate.trim())
+      .filter((candidate) => net.isIP(candidate) !== 0),
+  );
+};
+
+const clientIpFromForwardedChain = (
+  value: string | string[] | undefined,
+  trustedProxies: TrustedProxyConfig,
+): string | undefined => {
+  const ips = validForwardedIps(value);
+  if (ips.length === 0) {
+    return undefined;
+  }
+
+  for (let index = ips.length - 1; index >= 0; index -= 1) {
+    const ip = ips[index];
+    if (ip && !isTrustedProxy(ip, trustedProxies)) {
+      return ip;
+    }
+  }
+
+  return ips[0];
+};
+
 const forwardedProtocol = (
   value: string | string[] | undefined,
   defaultProtocol: "http" | "https",
@@ -77,7 +109,7 @@ export const getRequestContext = ({
 
   return {
     clientIp:
-      firstValidForwardedIp(headers["x-forwarded-for"]) ??
+      clientIpFromForwardedChain(headers["x-forwarded-for"], trustedProxies) ??
       firstValidForwardedIp(headers["x-real-ip"]) ??
       remoteAddress ??
       "",

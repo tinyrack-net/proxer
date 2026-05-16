@@ -6,20 +6,37 @@ export const tunnelRouteKey = (route: TunnelRoute): string => {
   return route.type === "root" ? "root" : `subdomain:${route.subdomain}`;
 };
 
-const hostWithoutPort = (host: string | string[] | undefined): string => {
+const parseHostAuthority = (
+  host: string | string[] | undefined,
+): string | undefined => {
   const hostValue = Array.isArray(host) ? host[0] : host;
-  if (!hostValue) {
-    return "";
+  const authority = hostValue?.trim().toLowerCase();
+  if (!authority || authority.startsWith("[") || authority.includes("]")) {
+    return undefined;
   }
 
-  return (hostValue.split(":")[0] ?? "").toLowerCase();
+  const parts = authority.split(":");
+  if (parts.length > 2) {
+    return undefined;
+  }
+
+  const hostname = parts[0] ?? "";
+  if (!hostname) {
+    return undefined;
+  }
+
+  if (parts.length === 2 && !/^\d+$/u.test(parts[1] ?? "")) {
+    return undefined;
+  }
+
+  return hostname;
 };
 
 export const parseTunnelRouteFromHost = (
   host: string | string[] | undefined,
   domain?: string,
 ): TunnelRoute | undefined => {
-  const hostname = hostWithoutPort(host);
+  const hostname = parseHostAuthority(host);
   if (!hostname) {
     return undefined;
   }

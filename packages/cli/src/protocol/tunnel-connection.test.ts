@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
-import type { WebSocket } from "ws";
+import { WebSocket } from "ws";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import { encodeFrame } from "#app/protocol/frame-codec.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
@@ -8,6 +8,7 @@ import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection
 class FakeWebSocket extends EventEmitter {
   sent: string[] = [];
   closeCalls: Array<{ code?: number; reason?: string }> = [];
+  readyState: number = WebSocket.OPEN;
 
   send(data: string, callback?: (error?: Error) => void) {
     this.sent.push(data);
@@ -16,6 +17,11 @@ class FakeWebSocket extends EventEmitter {
 
   close(code?: number, reason?: string) {
     this.closeCalls.push({ code, reason });
+    if (this.readyState === WebSocket.CLOSED) {
+      return;
+    }
+
+    this.readyState = WebSocket.CLOSED;
     this.emit("close");
   }
 }
@@ -68,6 +74,16 @@ describe("WebSocket tunnel connection", () => {
     await connection.close(1000, "done");
 
     expect(socket.closeCalls).toEqual([{ code: 1000, reason: "done" }]);
+  });
+
+  it("resolves close when the underlying socket is already closed", async () => {
+    const socket = new FakeWebSocket();
+    socket.readyState = WebSocket.CLOSED;
+    const connection = createWebSocketTunnelConnection(asWebSocket(socket));
+
+    await expect(connection.close()).resolves.toBeUndefined();
+
+    expect(socket.closeCalls).toEqual([]);
   });
 
   it("removes frame and close listeners", () => {

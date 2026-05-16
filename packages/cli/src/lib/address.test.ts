@@ -44,4 +44,8 @@ describe("formatHostPort", () => {
       "127.0.0.1:8080",
     );
   });
+
+  it("brackets IPv6 hosts", () => {
+    expect(formatHostPort({ host: "::1", port: 8080 })).toBe("[::1]:8080");
+  });
 });

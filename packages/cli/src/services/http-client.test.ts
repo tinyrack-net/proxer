@@ -156,6 +156,7 @@ describe("HTTP tunnel client reliability", () => {
       reconnectDelayMs: 10,
       serverUrl: `ws://${address.host}:${address.port}`,
       subdomain: "demo",
+      token: "secret",
     });
     cleanups.push(() => client.close());
 
@@ -176,6 +177,7 @@ describe("HTTP tunnel client reliability", () => {
     const controlServer = await startControlServer({
       address: randomAddress,
       registry,
+      token: "secret",
     });
     cleanups.push(() => controlServer.close());
     const client = await startHttpTunnelClient({
@@ -184,6 +186,7 @@ describe("HTTP tunnel client reliability", () => {
       reconnectDelayMs: 10,
       serverUrl: controlServer.url,
       subdomain: "demo",
+      token: "secret",
     });
     cleanups.push(() => client.close());
     const firstConnection = registry.get({
@@ -207,5 +210,17 @@ describe("HTTP tunnel client reliability", () => {
       body: "ok",
       status: 200,
     });
+  });
+
+  it("fails fast without a token", async () => {
+    await expect(
+      startHttpTunnelClient({
+        heartbeatIntervalMs: 0,
+        localPort: 1,
+        reconnectDelayMs: 10,
+        serverUrl: "ws://127.0.0.1:1",
+        subdomain: "demo",
+      }),
+    ).rejects.toThrow("token is required");
   });
 });

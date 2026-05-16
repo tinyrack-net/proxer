@@ -160,6 +160,11 @@ export const startHttpTunnelClient = async ({
   subdomain,
   token,
 }: HttpClientConfig): Promise<RunningTunnelClient> => {
+  const tunnelToken = token?.trim();
+  if (!tunnelToken) {
+    throw new ProxerError("token is required");
+  }
+
   let activeConnection: ActiveTunnelConnection | undefined;
   let closing = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -179,7 +184,12 @@ export const startHttpTunnelClient = async ({
   const connect = async (): Promise<ActiveTunnelConnection> => {
     const socket = await openWebSocket(serverUrl);
     const connection = createWebSocketTunnelConnection(socket);
-    await registerConnection({ connection, socket, subdomain, token });
+    await registerConnection({
+      connection,
+      socket,
+      subdomain,
+      token: tunnelToken,
+    });
     const detachLocalHttpForwarder = attachLocalHttpForwarder({
       connection,
       localPort,

@@ -138,6 +138,16 @@ describe("CLI PROXER_ environment options", () => {
     expect(firstServerConfig()).not.toHaveProperty("controlPath");
   });
 
+  it("rejects an empty server token flag", async () => {
+    const process = createCapturedProcess({ PROXER_TOKEN: "env-secret" });
+
+    await runCli(["server", "--token", "   "], process);
+
+    expect(mocks.runServer).not.toHaveBeenCalled();
+    expect(process.result().exitCode).not.toBe(0);
+    expect(process.result().stderr).toContain("token must not be empty");
+  });
+
   it("does not accept the removed server --control-path flag", async () => {
     await runCli(
       ["server", "--control-path", "/flag-control"],
@@ -197,7 +207,11 @@ describe("CLI PROXER_ environment options", () => {
   it.each([
     ["dot", "bad.name", {}],
     ["underscore", "bad_name", {}],
-    ["leading hyphen", undefined, { PROXER_SUBDOMAIN: "-bad" }],
+    [
+      "leading hyphen",
+      undefined,
+      { PROXER_SUBDOMAIN: "-bad", PROXER_TOKEN: "secret" },
+    ],
     ["trailing hyphen", "bad-", {}],
     ["longer than 63 characters", "a".repeat(64), {}],
   ])("rejects an HTTP subdomain with a %s", async (_case, subdomain, env) => {
@@ -223,11 +237,36 @@ describe("CLI PROXER_ environment options", () => {
         "https://proxy.example.com",
         "--subdomain",
         "Mixed-Case",
+        "--token",
+        "secret",
       ],
       createCapturedProcess(),
     );
 
-    expect(firstHttpConfig()).toMatchObject({ subdomain: "mixed-case" });
+    expect(firstHttpConfig()).toMatchObject({
+      subdomain: "mixed-case",
+      token: "secret",
+    });
+  });
+
+  it("rejects an HTTP client without a token", async () => {
+    const process = createCapturedProcess();
+
+    await runCli(["http", "3000"], process);
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
+    expect(process.result().exitCode).not.toBe(0);
+    expect(process.result().stderr).toContain("token is required");
+  });
+
+  it("rejects an empty HTTP client token flag", async () => {
+    const process = createCapturedProcess({ PROXER_TOKEN: "env-secret" });
+
+    await runCli(["http", "3000", "--token", "   "], process);
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
+    expect(process.result().exitCode).not.toBe(0);
+    expect(process.result().stderr).toContain("token must not be empty");
   });
 
   it("does not accept the removed HTTP --control-path flag", async () => {

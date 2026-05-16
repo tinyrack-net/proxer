@@ -49,6 +49,7 @@ describe("runtime assembly", () => {
           return {
             controlUrl: "ws://127.0.0.1:8080/__proxer__/control",
             publicUrl: "http://127.0.0.1:8080",
+            token: "dev-token",
             async close() {
               closed.push("server");
             },
@@ -74,6 +75,35 @@ describe("runtime assembly", () => {
 
     expect(closed).toEqual(["server"]);
     expect(logger.messages).toContain("server stopped");
+  });
+
+  it("logs a generated server token when the server returns one", async () => {
+    const logger = createLogger();
+    const process = createSignalTarget();
+    const server = {
+      controlUrl: "ws://127.0.0.1:8080/__proxer__/control",
+      publicUrl: "http://127.0.0.1:8080",
+      token: "generated-token",
+      async close() {},
+    };
+
+    const runPromise = runServer(
+      { listenAddress: { host: "127.0.0.1", port: 8080 } },
+      {
+        logger,
+        process,
+        async startServer() {
+          return server;
+        },
+      },
+    );
+
+    await Promise.resolve();
+
+    expect(logger.messages).toContain("token: generated-token");
+
+    process.emit("SIGTERM");
+    await runPromise;
   });
 
   it("starts the HTTP tunnel client, logs forwarding details, and closes on SIGTERM", async () => {

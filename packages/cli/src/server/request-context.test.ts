@@ -28,11 +28,13 @@ describe("request context", () => {
     });
   });
 
-  it("uses the first valid X-Forwarded-For IP from trusted peers", () => {
+  it("uses the first untrusted IP from the right side of a trusted forwarded chain", () => {
     expect(
       getRequestContext({
         defaultProtocol: "http",
-        headers: { "x-forwarded-for": "bad, 203.0.113.10, 203.0.113.11" },
+        headers: {
+          "x-forwarded-for": "198.51.100.20, 203.0.113.10, 127.0.0.2",
+        },
         remoteAddress: "127.0.0.1",
         trustedProxies,
       }).clientIp,

@@ -1,3 +1,4 @@
+import net from "node:net";
 import { ProxerError } from "#app/lib/error.ts";
 
 export type HostPort = {
@@ -36,5 +37,7 @@ export const parseHostPort = (
 };
 
 export const formatHostPort = (address: HostPort): string => {
-  return `${address.host}:${address.port}`;
+  const host =
+    net.isIP(address.host) === 6 ? `[${address.host}]` : address.host;
+  return `${host}:${address.port}`;
 };

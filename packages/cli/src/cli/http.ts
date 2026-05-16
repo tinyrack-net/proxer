@@ -55,6 +55,14 @@ export const buildHttpCommand = () => {
     },
     async func(flags, localPort) {
       const env = this.env ?? {};
+      const token = preferFlag(
+        flags.token,
+        readEnvString({ env, name: "PROXER_TOKEN" }),
+      );
+      if (!token) {
+        throw new ProxerError("token is required");
+      }
+
       const server =
         preferFlag(
           flags.server,
@@ -70,10 +78,7 @@ export const buildHttpCommand = () => {
             flags.subdomain,
             envSubdomain ? parseHttpSubdomain(envSubdomain) : undefined,
           ),
-          token: preferFlag(
-            flags.token,
-            readEnvString({ env, name: "PROXER_TOKEN" }),
-          ),
+          token,
         },
         { logger: this.logger, process: this.process },
       );
