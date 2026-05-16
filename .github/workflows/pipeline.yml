@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Run lint
         run: pnpm run format:check
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Run typecheck
         run: pnpm run typecheck
@@ -53,11 +53,11 @@ jobs:
         os:
           - ubuntu-latest
           - macos-26
-          - windows-latest
+          - windows-2022
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Build
         run: pnpm run build
@@ -74,20 +74,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Generate Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}
           tags: type=raw,value=ci
 
       - name: Build smoke image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -111,10 +111,10 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Validate Docker Hub configuration
         env:
@@ -126,14 +126,14 @@ jobs:
           fi
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.GHCR_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.DOCKERHUB_REGISTRY }}
           username: ${{ env.DOCKERHUB_USERNAME }}
@@ -141,7 +141,7 @@ jobs:
 
       - name: Generate Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}
@@ -152,7 +152,7 @@ jobs:
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and publish Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -168,49 +168,49 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Build pkg
         run: pnpm --filter @tinyrack/proxer run pkg:build -- --target
           node24-linux-x64,node24-linux-arm64,node24-macos-x64,node24-macos-arm64,node24-win-x64,node24-win-arm64
 
       - name: Upload Linux x64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-linux-x64
           path: packages/cli/dist/pkg/proxer-linux-x64
           if-no-files-found: error
 
       - name: Upload Linux arm64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-linux-arm64
           path: packages/cli/dist/pkg/proxer-linux-arm64
           if-no-files-found: error
 
       - name: Upload macOS x64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-darwin-x64
           path: packages/cli/dist/pkg/proxer-macos-x64
           if-no-files-found: error
 
       - name: Upload macOS arm64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-darwin-arm64
           path: packages/cli/dist/pkg/proxer-macos-arm64
           if-no-files-found: error
 
       - name: Upload Windows x64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-win32-x64.exe
           path: packages/cli/dist/pkg/proxer-win-x64.exe
           if-no-files-found: error
 
       - name: Upload Windows arm64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-win32-arm64.exe
           path: packages/cli/dist/pkg/proxer-win-arm64.exe
@@ -239,10 +239,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.artifact }}
           path: packages/cli/dist/pkg
@@ -284,10 +284,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Download artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.artifact }}
           path: packages/cli/dist/pkg
@@ -318,7 +318,7 @@ jobs:
           pnpm --filter @tinyrack/proxer-tools run cli pkg smoke --skip-build --executablePath "packages/cli/dist/pkg/$fname"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: packages/cli/dist/pkg/proxer-*
@@ -330,19 +330,19 @@ jobs:
     name: Package & Test (Windows)
     needs: build-pkg
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Download Windows x64
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: proxer-win32-x64.exe
           path: packages/cli/dist/pkg
 
       - name: Download Windows arm64
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: proxer-win32-arm64.exe
           path: packages/cli/dist/pkg
@@ -401,7 +401,7 @@ jobs:
         run: pnpm --filter @tinyrack/proxer-tools run cli msix bundle
 
       - name: Upload Windows x64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-win32-x64.exe
           path: packages/cli/dist/pkg/proxer-win-x64.exe
@@ -409,7 +409,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Windows arm64
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-win32-arm64.exe
           path: packages/cli/dist/pkg/proxer-win-arm64.exe
@@ -419,7 +419,7 @@ jobs:
       - name: Upload Windows x64 MSIX
         if: false # Temporarily disabled with MSIX packaging
         # if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-win32-x64-msix
           path: packages/cli/dist/pkg/proxer-win-x64.msix
@@ -429,7 +429,7 @@ jobs:
       - name: Upload Windows arm64 MSIX
         if: false # Temporarily disabled with MSIX packaging
         # if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-win32-arm64-msix
           path: packages/cli/dist/pkg/proxer-win-arm64.msix
@@ -439,7 +439,7 @@ jobs:
       - name: Upload Windows MSIX bundle
         if: false # Temporarily disabled with MSIX packaging
         # if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: proxer-windows-msixbundle
           path: packages/cli/dist/pkg/proxer-windows.msixbundle
@@ -468,10 +468,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
       - name: Download pkg artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.artifact }}
           path: packages/cli/dist/pkg
@@ -482,7 +482,7 @@ jobs:
           --outputPath ${{ matrix.artifact }}.AppImage --arch ${{ matrix.arch }}
 
       - name: Upload AppImage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}-appimage
           path: ${{ matrix.artifact }}.AppImage
@@ -505,13 +505,13 @@ jobs:
       id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
         with:
           install: 'true'
 
       - name: Set up registry
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -542,7 +542,7 @@ jobs:
           fi
 
       - name: Download pkg artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: proxer-*
           path: release-assets
@@ -562,7 +562,7 @@ jobs:
           }}/release-assets"
 
       - name: Checkout Homebrew Tap
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: tinyrack-net/homebrew-tap
           path: homebrew-tap
@@ -583,7 +583,7 @@ jobs:
     name: Publish WinGet
     needs: publish-release
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 15
     permissions:
       contents: read
@@ -615,13 +615,13 @@ jobs:
     needs: publish-release
     if: false # Temporarily disabled
     # if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download MSIX bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: proxer-windows-msixbundle
           path: store-assets
@@ -672,9 +672,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Download pkg artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.artifact }}
           path: bin-temp
@@ -689,7 +689,7 @@ jobs:
         uses: snapcore/action-build@v1
 
       - name: Upload Snap artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}-snap
           path: ${{ steps.build.outputs.snap }}
