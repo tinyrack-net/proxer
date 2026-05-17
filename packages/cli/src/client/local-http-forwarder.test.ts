@@ -1,8 +1,23 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { attachLocalHttpForwarder } from "#app/client/local-http-forwarder.ts";
+import type { RuntimeLogger } from "#app/lib/logging.ts";
 import type { DataFrame, TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
+
+const createLogger = (): RuntimeLogger & { readonly messages: string[] } => {
+  const messages: string[] = [];
+
+  return {
+    messages,
+    info(message) {
+      messages.push(message);
+    },
+    error(message) {
+      messages.push(message);
+    },
+  };
+};
 
 class FakeTunnelConnection implements TunnelConnection {
   readonly sent: TunnelFrame[] = [];
@@ -219,18 +234,70 @@ describe("local HTTP forwarder", () => {
     expect(responseBody).toBe("onetwo");
   });
 
+  it("logs safe local HTTP open and response summaries", async () => {
+    const logger = createLogger();
+    const server = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("ok");
+    });
+    servers.push(server);
+    const port = await listenOnRandomPort(server);
+    const connection = new FakeTunnelConnection();
+    cleanups.push(
+      attachLocalHttpForwarder({
+        connection,
+        localPort: port,
+        logger,
+        route: { type: "subdomain", subdomain: "demo" },
+      }),
+    );
+
+    connection.emitFrame({
+      headers: { authorization: "Bearer secret" },
+      kind: "http",
+      method: "GET",
+      path: "/api?token=secret",
+      streamId: "stream-logs",
+      type: "open",
+    });
+    connection.emitFrame({
+      direction: "request",
+      streamId: "stream-logs",
+      type: "end",
+    });
+
+    await connection.waitForSentFrame(
+      (frame) => frame.type === "end" && frame.direction === "response",
+    );
+
+    expect(logger.messages).toContain(
+      `[demo] GET /api -> local 127.0.0.1:${port}`,
+    );
+    expect(logger.messages).toContain("[demo] GET /api <- 200");
+    expect(logger.messages.join("\n")).not.toContain("token=secret");
+    expect(logger.messages.join("\n")).not.toContain("Bearer secret");
+  });
+
   it("sends an error frame when the local service connection fails", async () => {
+    const logger = createLogger();
     const server = http.createServer();
     const port = await listenOnRandomPort(server);
     await closeServer(server);
     const connection = new FakeTunnelConnection();
-    cleanups.push(attachLocalHttpForwarder({ connection, localPort: port }));
+    cleanups.push(
+      attachLocalHttpForwarder({
+        connection,
+        localPort: port,
+        logger,
+        route: { type: "subdomain", subdomain: "demo" },
+      }),
+    );
 
     connection.emitFrame({
       headers: {},
       kind: "http",
       method: "GET",
-      path: "/missing",
+      path: "/missing?token=secret",
       streamId: "stream-3",
       type: "open",
     });
@@ -243,5 +310,18 @@ describe("local HTTP forwarder", () => {
       streamId: "stream-3",
       type: "error",
     });
+    expect(logger.messages).toContain(
+      `[demo] GET /missing -> local 127.0.0.1:${port}`,
+    );
+    expect(
+      logger.messages.some((message) =>
+        message.includes("[demo] GET /missing"),
+      ),
+    ).toBe(true);
+    expect(
+      logger.messages.some((message) => message.includes("local error")),
+    ).toBe(true);
+    expect(logger.messages.join("\n")).not.toContain("token=secret");
+    expect(logger.messages.join("\n")).not.toContain("secret");
   });
 });

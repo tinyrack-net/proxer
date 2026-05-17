@@ -2,6 +2,7 @@ import http from "node:http";
 import { WebSocketServer } from "ws";
 import { formatHostPort, type HostPort } from "#app/lib/address.ts";
 import { ProxerError } from "#app/lib/error.ts";
+import { formatRoutePrefix, type RuntimeLogger } from "#app/lib/logging.ts";
 import { secureCompare } from "#app/lib/secure-compare.ts";
 import type { RegisterFrame } from "#app/protocol/frame.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
@@ -10,6 +11,7 @@ import type { TunnelRegistry } from "#app/server/stream-registry.ts";
 
 export type ControlServerOptions = {
   readonly address?: HostPort;
+  readonly logger?: RuntimeLogger;
   readonly maxPayloadBytes?: number;
   readonly registry: TunnelRegistry;
   readonly registerTimeoutMs?: number;
@@ -55,20 +57,30 @@ const isRegisterFrame = (frame: {
 const DEFAULT_REGISTER_TIMEOUT_MS = 7_500;
 const DEFAULT_MAX_PAYLOAD_BYTES = 1024 * 1024;
 
+const routeName = (route: TunnelRoute): string => route.type;
+
+const duplicateReason = (route: TunnelRoute): string => {
+  return route.type === "root" ? "duplicate-root" : "duplicate-subdomain";
+};
+
 export const createControlWebSocketServer = ({
+  logger,
   maxPayloadBytes = DEFAULT_MAX_PAYLOAD_BYTES,
   registry,
   registerTimeoutMs = DEFAULT_REGISTER_TIMEOUT_MS,
   token,
 }: Omit<ControlServerOptions, "address">): WebSocketServer => {
+  let activeClients = 0;
   const webSocketServer = new WebSocketServer({
     maxPayload: maxPayloadBytes,
     noServer: true,
   });
 
-  webSocketServer.on("connection", (socket) => {
+  webSocketServer.on("connection", (socket, request) => {
     const connection = createWebSocketTunnelConnection(socket);
     let registeredRoute: TunnelRoute | undefined;
+    let registeredAt = 0;
+    const remoteAddress = request.socket.remoteAddress ?? "unknown";
     const registerTimer = setTimeout(() => {
       void connection.close(1008, "Tunnel registration timed out");
     }, registerTimeoutMs);
@@ -87,6 +99,9 @@ export const createControlWebSocketServer = ({
       }
 
       if (token !== undefined && !secureCompare(token, frame.token)) {
+        logger?.info(
+          `client rejected reason=invalid-token remote=${remoteAddress}`,
+        );
         void connection.close(1008, "Invalid tunnel token");
         return;
       }
@@ -99,6 +114,9 @@ export const createControlWebSocketServer = ({
         registry.register({ route, connection });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        logger?.info(
+          `${formatRoutePrefix(route)} client rejected reason=${duplicateReason(route)} remote=${remoteAddress}`,
+        );
         void connection
           .send({ type: "error", streamId: "registration", message })
           .finally(() => connection.close(1008, message));
@@ -106,7 +124,12 @@ export const createControlWebSocketServer = ({
       }
 
       registeredRoute = route;
+      registeredAt = Date.now();
+      activeClients += 1;
       clearRegisterTimer();
+      logger?.info(
+        `${formatRoutePrefix(route)} client connected route=${routeName(route)} remote=${remoteAddress} active=${activeClients}`,
+      );
       void connection.send({
         type: "registered",
         ...(route.type === "subdomain" ? { subdomain: route.subdomain } : {}),
@@ -117,6 +140,10 @@ export const createControlWebSocketServer = ({
       clearRegisterTimer();
       if (registeredRoute) {
         registry.unregister(registeredRoute, connection);
+        activeClients -= 1;
+        logger?.info(
+          `${formatRoutePrefix(registeredRoute)} client disconnected duration=${Date.now() - registeredAt}ms active=${activeClients}`,
+        );
       }
     });
   });
@@ -126,6 +153,7 @@ export const createControlWebSocketServer = ({
 
 export const startControlServer = async ({
   address,
+  logger,
   maxPayloadBytes,
   registry,
   registerTimeoutMs,
@@ -135,6 +163,7 @@ export const startControlServer = async ({
 }): Promise<ControlServerHandle> => {
   const server = http.createServer();
   const webSocketServer = createControlWebSocketServer({
+    logger,
     maxPayloadBytes,
     registry,
     registerTimeoutMs,

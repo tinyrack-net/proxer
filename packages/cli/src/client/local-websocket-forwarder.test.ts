@@ -1,8 +1,23 @@
 import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { attachLocalWebSocketForwarder } from "#app/client/local-websocket-forwarder.ts";
+import type { RuntimeLogger } from "#app/lib/logging.ts";
 import type { DataFrame, TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
+
+const createLogger = (): RuntimeLogger & { readonly messages: string[] } => {
+  const messages: string[] = [];
+
+  return {
+    messages,
+    info(message) {
+      messages.push(message);
+    },
+    error(message) {
+      messages.push(message);
+    },
+  };
+};
 
 class FakeTunnelConnection implements TunnelConnection {
   readonly sent: TunnelFrame[] = [];
@@ -79,6 +94,22 @@ const closeServer = async (server: net.Server): Promise<void> => {
       resolve();
     });
   });
+};
+
+const waitFor = async (
+  predicate: () => boolean,
+  message: string,
+): Promise<void> => {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  throw new Error(message);
 };
 
 describe("local WebSocket forwarder", () => {
@@ -170,5 +201,56 @@ describe("local WebSocket forwarder", () => {
           "local:client-bytes",
     );
     expect(echoedFrame).toMatchObject({ streamId: "stream-1" });
+  });
+
+  it("logs safe local WebSocket open and close summaries", async () => {
+    const logger = createLogger();
+    const localServer = net.createServer((socket) => {
+      socket.once("data", () => {
+        socket.write("HTTP/1.1 101 Switching Protocols\r\n\r\n", () => {
+          socket.end();
+        });
+      });
+    });
+    servers.push(localServer);
+    const port = await listenOnRandomPort(localServer);
+    const connection = new FakeTunnelConnection();
+    cleanups.push(
+      attachLocalWebSocketForwarder({
+        connection,
+        localPort: port,
+        logger,
+        route: { type: "subdomain", subdomain: "demo" },
+      }),
+    );
+
+    connection.emitFrame({
+      headers: {
+        authorization: "Bearer secret",
+        connection: "Upgrade",
+        host: "demo.localhost",
+        upgrade: "websocket",
+      },
+      kind: "websocket",
+      method: "GET",
+      path: "/socket?token=secret",
+      streamId: "stream-logs",
+      type: "open",
+    });
+
+    await waitFor(
+      () =>
+        logger.messages.includes(
+          `[demo] WS /socket -> local 127.0.0.1:${port} opened`,
+        ),
+      "expected local websocket open log",
+    );
+    await waitFor(
+      () => logger.messages.includes("[demo] WS /socket closed"),
+      "expected local websocket close log",
+    );
+
+    expect(logger.messages.join("\n")).not.toContain("token=secret");
+    expect(logger.messages.join("\n")).not.toContain("Bearer secret");
   });
 });

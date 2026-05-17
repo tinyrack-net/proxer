@@ -5,6 +5,11 @@ import {
   normalizeWebSocketUpgradeHeaders,
 } from "#app/lib/headers.ts";
 import { createStreamId } from "#app/lib/ids.ts";
+import {
+  formatRoutePrefix,
+  type RuntimeLogger,
+  sanitizeLogPath,
+} from "#app/lib/logging.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import {
@@ -24,6 +29,7 @@ import {
 
 export type WebSocketUpgradeHandlerOptions = {
   readonly domain?: string;
+  readonly logger?: RuntimeLogger;
   readonly registry: TunnelRegistry;
   readonly onSocket?: (socket: Duplex) => void;
   readonly streamTimeoutMs?: number;
@@ -37,6 +43,22 @@ const getHostValue = (host: string | string[] | undefined): string => {
 
 const routeDescription = (route: TunnelRoute): string => {
   return route.type === "root" ? "root domain" : `subdomain ${route.subdomain}`;
+};
+
+const logWebSocketFailure = ({
+  detail,
+  logger,
+  request,
+  route,
+}: {
+  readonly detail: "no-route" | "no-tunnel";
+  readonly logger?: RuntimeLogger;
+  readonly request: http.IncomingMessage;
+  readonly route?: TunnelRoute;
+}): void => {
+  logger?.info(
+    `${formatRoutePrefix(route)} WS ${sanitizeLogPath(request.url)} -> 404 ${detail}`,
+  );
 };
 
 const writeNotFoundResponse = (socket: Duplex, message: string): void => {
@@ -57,18 +79,25 @@ const encodeData = (chunk: Buffer): string => {
 const proxyWebSocketUpgrade = ({
   connection,
   head,
+  logger,
   requestContext,
   request,
+  route,
   socket,
   streamTimeoutMs,
 }: {
   readonly connection: TunnelConnection;
   readonly head: Buffer;
+  readonly logger?: RuntimeLogger;
   readonly requestContext: RequestContext;
   readonly request: http.IncomingMessage;
+  readonly route: TunnelRoute;
   readonly socket: Duplex;
   readonly streamTimeoutMs: number;
 }): void => {
+  const startedAt = Date.now();
+  const routePrefix = formatRoutePrefix(route);
+  const path = sanitizeLogPath(request.url);
   const streamId = createStreamId();
   let cleanedUp = false;
   let streamClosed = false;
@@ -111,6 +140,9 @@ const proxyWebSocketUpgrade = ({
       return;
     }
     cleanedUp = true;
+    logger?.info(
+      `${routePrefix} WS ${path} closed ${Date.now() - startedAt}ms`,
+    );
     removeFrameListener();
     removeCloseListener();
     socket.off("data", onSocketData);
@@ -158,6 +190,7 @@ const proxyWebSocketUpgrade = ({
   socket.on("close", onSocketClose);
   socket.on("end", onSocketClose);
   socket.on("error", onSocketError);
+  logger?.info(`${routePrefix} WS ${path} opened`);
 
   sendFrame({
     headers: applyForwardedHeaders(
@@ -181,6 +214,7 @@ export const handlePublicWebSocketUpgrade = (
   head: Buffer,
   {
     domain,
+    logger,
     onSocket,
     registry,
     streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
@@ -200,6 +234,7 @@ export const handlePublicWebSocketUpgrade = (
       socket,
       `No tunnel route matched host ${getHostValue(requestContext.host) || "missing host"}`,
     );
+    logWebSocketFailure({ detail: "no-route", logger, request });
     return;
   }
 
@@ -209,14 +244,17 @@ export const handlePublicWebSocketUpgrade = (
       socket,
       `No tunnel registered for ${routeDescription(route)}`,
     );
+    logWebSocketFailure({ detail: "no-tunnel", logger, request, route });
     return;
   }
 
   proxyWebSocketUpgrade({
     connection: tunnel.connection,
     head,
+    logger,
     requestContext,
     request,
+    route,
     socket,
     streamTimeoutMs,
   });

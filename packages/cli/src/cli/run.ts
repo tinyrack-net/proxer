@@ -1,3 +1,4 @@
+import { derivePublicUrl, sanitizeLogUrl } from "#app/lib/logging.ts";
 import type {
   HttpClientConfig,
   RunningTunnelClient,
@@ -72,7 +73,7 @@ export const runServer = async (
   config: ServerConfig,
   { logger, process, startServer = startServerService }: RunServerOptions,
 ): Promise<void> => {
-  const server = await startServer(config);
+  const server = await startServer({ ...config, logger });
 
   try {
     logger.info(`public: ${server.publicUrl}`);
@@ -95,7 +96,7 @@ export const runHttpClient = async (
     startHttpTunnelClient = startHttpTunnelClientService,
   }: RunHttpClientOptions,
 ): Promise<void> => {
-  const client = await startHttpTunnelClient(config);
+  const client = await startHttpTunnelClient({ ...config, logger });
 
   try {
     if (client.subdomain) {
@@ -103,8 +104,14 @@ export const runHttpClient = async (
     } else {
       logger.info("route: root domain");
     }
+    logger.info(
+      `public: ${derivePublicUrl({
+        serverUrl: config.serverUrl,
+        subdomain: client.subdomain,
+      })}`,
+    );
     logger.info(`local: 127.0.0.1:${config.localPort}`);
-    logger.info(`server: ${config.serverUrl}`);
+    logger.info(`server: ${sanitizeLogUrl(config.serverUrl)}`);
     await waitForShutdownSignal(process);
   } finally {
     await client.close();

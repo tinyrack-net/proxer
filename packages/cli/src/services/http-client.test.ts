@@ -1,7 +1,9 @@
 import http from "node:http";
+import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { type RawData, WebSocketServer } from "ws";
 import type { HostPort } from "#app/lib/address.ts";
+import type { RuntimeLogger } from "#app/lib/logging.ts";
 import { decodeFrame, encodeFrame } from "#app/protocol/frame-codec.ts";
 import { startControlServer } from "#app/server/control-server.ts";
 import { startPublicHttpServer } from "#app/server/public-http-server.ts";
@@ -10,6 +12,20 @@ import { startHttpTunnelClient } from "#app/services/http-client.ts";
 import { listenOnRandomPort } from "#app/test/local-servers.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
+
+const createLogger = (): RuntimeLogger & { readonly messages: string[] } => {
+  const messages: string[] = [];
+
+  return {
+    messages,
+    info(message) {
+      messages.push(message);
+    },
+    error(message) {
+      messages.push(message);
+    },
+  };
+};
 
 const closeServer = async (server: http.Server): Promise<void> => {
   await new Promise<void>((resolve, reject) => {
@@ -88,13 +104,14 @@ const waitFor = async (
 
 const requestPublic = async (
   url: string,
+  path = "/",
 ): Promise<{
   readonly body: string;
   readonly status: number;
 }> => {
   return await new Promise((resolve, reject) => {
     const request = http.request(
-      new URL("/", url),
+      new URL(path, url),
       { headers: { host: "demo.localhost" } },
       (response) => {
         const chunks: Buffer[] = [];
@@ -110,6 +127,31 @@ const requestPublic = async (
     request.on("error", reject);
     request.end();
   });
+};
+
+const connectRawUpgrade = async (
+  url: string,
+  path = "/socket",
+): Promise<net.Socket> => {
+  const publicUrl = new URL(url);
+  const socket = net.connect(Number(publicUrl.port), publicUrl.hostname);
+
+  await new Promise<void>((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("error", reject);
+  });
+
+  socket.write(
+    `GET ${path} HTTP/1.1\r\n` +
+      "Host: demo.localhost\r\n" +
+      "Connection: Upgrade\r\n" +
+      "Upgrade: websocket\r\n" +
+      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+      "Sec-WebSocket-Version: 13\r\n" +
+      "\r\n",
+  );
+
+  return socket;
 };
 
 const rawDataToBuffer = (data: RawData): Buffer => {
@@ -193,7 +235,126 @@ describe("HTTP tunnel client reliability", () => {
     expect(pings).toBeGreaterThan(0);
   });
 
+  it("logs connection lifecycle without leaking the token", async () => {
+    const logger = createLogger();
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        const registeredFrame = registerClientOnMessage(data);
+        if (registeredFrame) {
+          socket.send(registeredFrame);
+        }
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+
+    const serverUrl = `ws://${address.host}:${address.port}/__proxer__/control?token=secret-token&state=ok`;
+    const safeServerUrl = `ws://${address.host}:${address.port}/__proxer__/control`;
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: 1,
+      logger,
+      reconnectDelayMs: 10,
+      serverUrl,
+      subdomain: "demo",
+      token: "secret-token",
+    });
+    cleanups.push(() => client.close());
+
+    expect(logger.messages).toContain(
+      `connecting server=${safeServerUrl} route=demo`,
+    );
+    expect(logger.messages).toContain(`connected server=${safeServerUrl}`);
+    expect(logger.messages).toContain("registered route=demo");
+    expect(
+      logger.messages.some((message) => message.includes("secret-token")),
+    ).toBe(false);
+  });
+
+  it("passes logger and route information to local forwarders", async () => {
+    const logger = createLogger();
+    const localServer = http.createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("ok");
+    });
+    localServer.on("upgrade", (_request, socket) => {
+      socket.write("HTTP/1.1 101 Switching Protocols\r\n\r\n", () => {
+        socket.end();
+      });
+    });
+    const localAddress = await listenOnRandomPort(localServer);
+    cleanups.push(async () => {
+      await closeServer(localServer);
+    });
+    const registry = new TunnelRegistry();
+    const publicServer = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => publicServer.close());
+    const controlServer = await startControlServer({
+      address: randomAddress,
+      registry,
+      token: "secret-token",
+    });
+    cleanups.push(() => controlServer.close());
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: localAddress.port,
+      logger,
+      reconnectDelayMs: 10,
+      serverUrl: controlServer.url,
+      subdomain: "demo",
+      token: "secret-token",
+    });
+    cleanups.push(() => client.close());
+
+    await expect(
+      requestPublic(publicServer.url, "/api?token=secret"),
+    ).resolves.toEqual({
+      body: "ok",
+      status: 200,
+    });
+    const socket = await connectRawUpgrade(
+      publicServer.url,
+      "/socket?token=secret",
+    );
+    cleanups.push(async () => {
+      socket.destroy();
+    });
+    await waitFor(
+      () => logger.messages.includes("[demo] WS /socket closed"),
+      "expected local websocket close log",
+    );
+
+    expect(logger.messages).toContain(
+      `[demo] GET /api -> local 127.0.0.1:${localAddress.port}`,
+    );
+    expect(logger.messages).toContain("[demo] GET /api <- 200");
+    expect(logger.messages).toContain(
+      `[demo] WS /socket -> local 127.0.0.1:${localAddress.port} opened`,
+    );
+    expect(logger.messages).toContain("[demo] WS /socket closed");
+    expect(logger.messages.join("\n")).not.toContain("token=secret");
+    expect(logger.messages.join("\n")).not.toContain("secret-token");
+  });
+
   it("reconnects and re-registers after the control connection drops", async () => {
+    const logger = createLogger();
     const localServer = await createLocalTextServer();
     cleanups.push(() => localServer.close());
     const registry = new TunnelRegistry();
@@ -211,6 +372,7 @@ describe("HTTP tunnel client reliability", () => {
     const client = await startHttpTunnelClient({
       heartbeatIntervalMs: 0,
       localPort: localServer.port,
+      logger,
       reconnectDelayMs: 10,
       serverUrl: controlServer.url,
       subdomain: "demo",
@@ -226,6 +388,10 @@ describe("HTTP tunnel client reliability", () => {
     }
 
     await firstConnection.close(1011, "drop");
+    await waitFor(
+      () => logger.messages.includes("reconnecting in 10ms"),
+      "expected reconnect log",
+    );
     await waitFor(() => {
       const nextConnection = registry.get({
         type: "subdomain",
@@ -238,6 +404,11 @@ describe("HTTP tunnel client reliability", () => {
       body: "ok",
       status: 200,
     });
+    expect(logger.messages).toContain("disconnected route=demo");
+    expect(logger.messages).toContain("reconnecting in 10ms");
+    expect(logger.messages.some((message) => message.includes("secret"))).toBe(
+      false,
+    );
   });
 
   it("does not duplicate forwarding after reconnect", async () => {

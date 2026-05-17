@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 import type { HostPort } from "#app/lib/address.ts";
+import type { RuntimeLogger } from "#app/lib/logging.ts";
 import type { TerminalLogger } from "#app/services/terminal/logger.ts";
 import { type RuntimeSignalTarget, runHttpClient, runServer } from "./run.ts";
 
@@ -31,6 +32,7 @@ describe("runtime assembly", () => {
       | {
           readonly listenAddress: HostPort;
           readonly domain?: string;
+          readonly logger?: TerminalLogger;
           readonly token?: string;
         }
       | undefined;
@@ -63,6 +65,7 @@ describe("runtime assembly", () => {
     expect(observedConfig).toEqual({
       domain: "proxy.example.com",
       listenAddress: { host: "127.0.0.1", port: 8080 },
+      logger,
       token: "dev-token",
     });
     expect(logger.messages).toContain("public: http://127.0.0.1:8080");
@@ -159,6 +162,7 @@ describe("runtime assembly", () => {
           readonly localPort: number;
           readonly serverUrl: string;
           readonly subdomain?: string;
+          readonly logger?: RuntimeLogger;
           readonly token?: string;
         }
       | undefined;
@@ -166,7 +170,7 @@ describe("runtime assembly", () => {
     const runPromise = runHttpClient(
       {
         localPort: 3000,
-        serverUrl: "ws://127.0.0.1:8080/__proxer__/control",
+        serverUrl: "ws://proxy.example.com:8080/__proxer__/control",
         subdomain: "demo",
         token: "dev-token",
       },
@@ -189,15 +193,22 @@ describe("runtime assembly", () => {
 
     expect(observedConfig).toEqual({
       localPort: 3000,
-      serverUrl: "ws://127.0.0.1:8080/__proxer__/control",
+      serverUrl: "ws://proxy.example.com:8080/__proxer__/control",
       subdomain: "demo",
+      logger,
       token: "dev-token",
     });
     expect(logger.messages).toContain("subdomain: demo");
+    expect(logger.messages).toContain(
+      "public: http://demo.proxy.example.com:8080",
+    );
     expect(logger.messages).toContain("local: 127.0.0.1:3000");
     expect(logger.messages).toContain(
-      "server: ws://127.0.0.1:8080/__proxer__/control",
+      "server: ws://proxy.example.com:8080/__proxer__/control",
     );
+    expect(
+      logger.messages.some((message) => message.includes("dev-token")),
+    ).toBe(false);
 
     process.emit("SIGTERM");
     await runPromise;
@@ -229,6 +240,46 @@ describe("runtime assembly", () => {
     await Promise.resolve();
 
     expect(logger.messages).toContain("route: root domain");
+
+    process.emit("SIGTERM");
+    await runPromise;
+  });
+
+  it("logs the derived public URL for a secure subdomain tunnel", async () => {
+    const logger = createLogger();
+    const process = createSignalTarget();
+    const runPromise = runHttpClient(
+      {
+        localPort: 3000,
+        serverUrl:
+          "wss://proxy.example.com/__proxer__/control?token=secret-token&state=ok",
+        subdomain: "demo",
+        token: "manual-token",
+      },
+      {
+        logger,
+        process,
+        async startHttpTunnelClient(config) {
+          return {
+            subdomain: config.subdomain,
+            async close() {},
+          };
+        },
+      },
+    );
+
+    await Promise.resolve();
+
+    expect(logger.messages).toContain("public: https://demo.proxy.example.com");
+    expect(logger.messages).toContain(
+      "server: wss://proxy.example.com/__proxer__/control",
+    );
+    expect(
+      logger.messages.some((message) => message.includes("secret-token")),
+    ).toBe(false);
+    expect(
+      logger.messages.some((message) => message.includes("manual-token")),
+    ).toBe(false);
 
     process.emit("SIGTERM");
     await runPromise;

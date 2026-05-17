@@ -8,6 +8,11 @@ import {
   stripHttpHopByHopHeaders,
 } from "#app/lib/headers.ts";
 import { createStreamId } from "#app/lib/ids.ts";
+import {
+  formatRoutePrefix,
+  type RuntimeLogger,
+  sanitizeLogPath,
+} from "#app/lib/logging.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import {
@@ -31,6 +36,7 @@ export { DEFAULT_STREAM_TIMEOUT_MS };
 export type PublicHttpServerOptions = {
   readonly address: HostPort;
   readonly domain?: string;
+  readonly logger?: RuntimeLogger;
   readonly registry: TunnelRegistry;
   readonly streamTimeoutMs?: number;
   readonly trustedProxies?: TrustedProxyConfig;
@@ -73,6 +79,30 @@ const getHostValue = (host: string | string[] | undefined): string => {
 
 const routeDescription = (route: TunnelRoute): string => {
   return route.type === "root" ? "root domain" : `subdomain ${route.subdomain}`;
+};
+
+const logHttpAccess = ({
+  detail,
+  elapsedMs,
+  logger,
+  method,
+  route,
+  status,
+  url,
+}: {
+  readonly detail?: string;
+  readonly elapsedMs?: number;
+  readonly logger?: RuntimeLogger;
+  readonly method: string | undefined;
+  readonly route?: TunnelRoute;
+  readonly status: number;
+  readonly url: string | undefined;
+}): void => {
+  const elapsed = elapsedMs === undefined ? "" : ` ${elapsedMs}ms`;
+  const suffix = detail ? ` ${detail}` : elapsed;
+  logger?.info(
+    `${formatRoutePrefix(route)} ${method ?? "GET"} ${sanitizeLogPath(url)} -> ${status}${suffix}`,
+  );
 };
 
 const endWithNoRoute = (
@@ -155,17 +185,22 @@ const handleTunnelFrame = ({
 
 const proxyHttpRequest = ({
   connection,
+  logger,
   requestContext,
   request,
   response,
+  route,
   streamTimeoutMs,
 }: {
   readonly connection: TunnelConnection;
+  readonly logger?: RuntimeLogger;
   readonly requestContext: RequestContext;
   readonly request: http.IncomingMessage;
   readonly response: http.ServerResponse;
+  readonly route: TunnelRoute;
   readonly streamTimeoutMs: number;
 }): void => {
+  const startedAt = Date.now();
   const streamId = createStreamId();
   let cleanedUp = false;
   let closeSent = false;
@@ -264,6 +299,16 @@ const proxyHttpRequest = ({
       sendCloseFrame();
     }
   });
+  response.on("finish", () => {
+    logHttpAccess({
+      elapsedMs: Date.now() - startedAt,
+      logger,
+      method: request.method,
+      route,
+      status: response.statusCode,
+      url: request.url,
+    });
+  });
 
   sendFrame({
     headers: applyForwardedHeaders(
@@ -280,6 +325,7 @@ const proxyHttpRequest = ({
 
 export const handlePublicHttpRequest = ({
   domain,
+  logger,
   registry,
   request,
   response,
@@ -287,6 +333,7 @@ export const handlePublicHttpRequest = ({
   trustedProxies = parseTrustedProxyValues([]),
 }: {
   readonly domain?: string;
+  readonly logger?: RuntimeLogger;
   readonly registry: TunnelRegistry;
   readonly request: http.IncomingMessage;
   readonly response: http.ServerResponse;
@@ -302,20 +349,37 @@ export const handlePublicHttpRequest = ({
   const route = parseTunnelRouteFromHost(requestContext.host, domain);
   if (!route) {
     endWithNoRoute(response, requestContext.host);
+    logHttpAccess({
+      detail: "no-route",
+      logger,
+      method: request.method,
+      status: 404,
+      url: request.url,
+    });
     return;
   }
 
   const tunnel = registry.get(route);
   if (!tunnel) {
     endWithNoTunnel(response, route);
+    logHttpAccess({
+      detail: "no-tunnel",
+      logger,
+      method: request.method,
+      route,
+      status: 404,
+      url: request.url,
+    });
     return;
   }
 
   proxyHttpRequest({
     connection: tunnel.connection,
+    logger,
     requestContext,
     request,
     response,
+    route,
     streamTimeoutMs,
   });
 };
@@ -323,6 +387,7 @@ export const handlePublicHttpRequest = ({
 export const startPublicHttpServer = async ({
   address,
   domain,
+  logger,
   registry,
   streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
   trustedProxies = parseTrustedProxyValues([]),
@@ -331,6 +396,7 @@ export const startPublicHttpServer = async ({
   const server = http.createServer((request, response) => {
     handlePublicHttpRequest({
       domain,
+      logger,
       registry,
       request,
       response,
@@ -344,6 +410,7 @@ export const startPublicHttpServer = async ({
       socket.once("close", () => upgradeSockets.delete(socket));
     },
     domain,
+    logger,
     registry,
     streamTimeoutMs,
     trustedProxies,

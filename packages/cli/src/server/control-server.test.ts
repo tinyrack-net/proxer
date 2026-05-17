@@ -7,6 +7,24 @@ import { TunnelRegistry } from "#app/server/stream-registry.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
 
+const createLogger = (): {
+  readonly messages: string[];
+  info(message: string): void;
+  error(message: string): void;
+} => {
+  const messages: string[] = [];
+
+  return {
+    messages,
+    info(message) {
+      messages.push(message);
+    },
+    error(message) {
+      messages.push(message);
+    },
+  };
+};
+
 const openWebSocket = async (url: string): Promise<WebSocket> => {
   const socket = new WebSocket(url);
   await new Promise<void>((resolve, reject) => {
@@ -93,8 +111,10 @@ describe("control server", () => {
 
   it("registers a client and replies with a registered frame", async () => {
     const registry = new TunnelRegistry();
+    const logger = createLogger();
     const handle = await startControlServer({
       address: randomAddress,
+      logger,
       registry,
     });
     handles.push(handle);
@@ -110,6 +130,9 @@ describe("control server", () => {
     expect(
       registry.get({ type: "subdomain", subdomain: "demo" })?.route,
     ).toEqual({ type: "subdomain", subdomain: "demo" });
+    expect(logger.messages).toEqual([
+      expect.stringContaining("[demo] client connected route=subdomain"),
+    ]);
   });
 
   it("registers a root-domain client when subdomain is omitted", async () => {
@@ -196,8 +219,10 @@ describe("control server", () => {
 
   it("rejects registration with a mismatched token", async () => {
     const registry = new TunnelRegistry();
+    const logger = createLogger();
     const handle = await startControlServer({
       address: randomAddress,
+      logger,
       registry,
       token: "expected-token",
     });
@@ -225,6 +250,11 @@ describe("control server", () => {
     expect(
       registry.get({ type: "subdomain", subdomain: "demo" }),
     ).toBeUndefined();
+    expect(logger.messages).toEqual([
+      expect.stringContaining("client rejected reason=invalid-token"),
+    ]);
+    expect(logger.messages.join("\n")).not.toContain("expected-token");
+    expect(logger.messages.join("\n")).not.toContain("wrong-token");
   });
 
   it("registers a client with the correct token", async () => {
@@ -284,8 +314,10 @@ describe("control server", () => {
 
   it("rejects duplicate tunnel subdomains", async () => {
     const registry = new TunnelRegistry();
+    const logger = createLogger();
     const handle = await startControlServer({
       address: randomAddress,
+      logger,
       registry,
     });
     handles.push(handle);
@@ -314,12 +346,20 @@ describe("control server", () => {
     expect(
       registry.get({ type: "subdomain", subdomain: "demo" })?.connection,
     ).toBeDefined();
+    expect(logger.messages).toEqual([
+      expect.stringContaining("[demo] client connected route=subdomain"),
+      expect.stringContaining(
+        "[demo] client rejected reason=duplicate-subdomain",
+      ),
+    ]);
   });
 
   it("unregisters a tunnel when the client disconnects", async () => {
     const registry = new TunnelRegistry();
+    const logger = createLogger();
     const handle = await startControlServer({
       address: randomAddress,
+      logger,
       registry,
     });
     handles.push(handle);
@@ -338,6 +378,10 @@ describe("control server", () => {
     expect(
       registry.get({ type: "subdomain", subdomain: "demo" }),
     ).toBeUndefined();
+    expect(logger.messages).toEqual([
+      expect.stringContaining("[demo] client connected route=subdomain"),
+      expect.stringContaining("[demo] client disconnected"),
+    ]);
   });
 
   it("returns the listening control URL", async () => {

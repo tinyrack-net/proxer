@@ -1,6 +1,7 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HostPort } from "#app/lib/address.ts";
+import type { RuntimeLogger } from "#app/lib/logging.ts";
 import type { DataFrame, TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import { startPublicHttpServer } from "#app/server/public-http-server.ts";
@@ -8,6 +9,19 @@ import { TunnelRegistry } from "#app/server/stream-registry.ts";
 import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
+
+const createLogger = (): RuntimeLogger & { readonly messages: string[] } => {
+  const messages: string[] = [];
+  return {
+    error(message) {
+      messages.push(message);
+    },
+    info(message) {
+      messages.push(message);
+    },
+    messages,
+  };
+};
 
 class FakeTunnelConnection implements TunnelConnection {
   readonly sent: TunnelFrame[] = [];
@@ -375,6 +389,84 @@ describe("public HTTP server", () => {
       body: "created",
       status: 201,
     });
+  });
+
+  it("logs a safe proxied HTTP access summary", async () => {
+    const logger = createLogger();
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      logger,
+      registry,
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      path: "/hello?token=secret",
+      url: handle.url,
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+    if (openFrame.type !== "open") {
+      throw new Error("expected open frame");
+    }
+    connection.emitFrame({
+      headers: {},
+      status: 200,
+      streamId: openFrame.streamId,
+      type: "headers",
+    });
+    connection.emitFrame({
+      direction: "response",
+      streamId: openFrame.streamId,
+      type: "end",
+    });
+
+    await expect(responsePromise).resolves.toMatchObject({ status: 200 });
+    expect(logger.messages).toHaveLength(1);
+    expect(logger.messages[0]).toContain("[demo] GET /hello -> 200");
+    expect(logger.messages[0]).not.toContain("token=secret");
+    expect(logger.messages[0]).not.toContain("secret");
+  });
+
+  it("logs safe HTTP no-route and no-tunnel summaries", async () => {
+    const logger = createLogger();
+    const registry = new TunnelRegistry();
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      domain: "proxy.example.com",
+      logger,
+      registry,
+    });
+    handles.push(handle);
+
+    const noRouteResponse = await requestPublic({
+      headers: { host: "unmatched.example.net" },
+      path: "/hello?token=secret",
+      url: handle.url,
+    });
+    const noTunnelResponse = await requestPublic({
+      headers: { host: "demo.proxy.example.com" },
+      path: "/hello?token=secret",
+      url: handle.url,
+    });
+
+    expect(noRouteResponse.status).toBe(404);
+    expect(noTunnelResponse.status).toBe(404);
+    expect(logger.messages).toHaveLength(2);
+    expect(logger.messages[0]).toContain(
+      "[unknown] GET /hello -> 404 no-route",
+    );
+    expect(logger.messages[1]).toContain("[demo] GET /hello -> 404 no-tunnel");
+    expect(logger.messages.join("\n")).not.toContain("token=secret");
+    expect(logger.messages.join("\n")).not.toContain("secret");
   });
 
   it("forwards request body data and request end frames", async () => {

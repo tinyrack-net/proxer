@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { HostPort } from "#app/lib/address.ts";
 import { ProxerError } from "#app/lib/error.ts";
+import type { RuntimeLogger } from "#app/lib/logging.ts";
 import { startSinglePortServer } from "#app/server/single-port-server.ts";
 import { TunnelRegistry } from "#app/server/stream-registry.ts";
 import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
@@ -8,6 +9,7 @@ import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
 export type ServerConfig = {
   readonly listenAddress: HostPort;
   readonly domain?: string;
+  readonly logger?: RuntimeLogger;
   readonly token?: string;
   readonly trustedProxies?: readonly string[];
 };
@@ -24,6 +26,7 @@ const generateToken = (): string => randomBytes(32).toString("base64url");
 export const startServer = async ({
   domain,
   listenAddress,
+  logger,
   token,
   trustedProxies,
 }: ServerConfig): Promise<RunningServer> => {
@@ -36,6 +39,7 @@ export const startServer = async ({
   const server = await startSinglePortServer({
     domain,
     listenAddress,
+    logger,
     registry,
     token: serverToken,
     trustedProxies: parseTrustedProxyValues(trustedProxies ?? []),

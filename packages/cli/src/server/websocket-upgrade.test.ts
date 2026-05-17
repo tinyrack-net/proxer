@@ -1,6 +1,7 @@
 import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HostPort } from "#app/lib/address.ts";
+import type { RuntimeLogger } from "#app/lib/logging.ts";
 import type { DataFrame, TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import { startPublicHttpServer } from "#app/server/public-http-server.ts";
@@ -8,6 +9,19 @@ import { TunnelRegistry } from "#app/server/stream-registry.ts";
 import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
+
+const createLogger = (): RuntimeLogger & { readonly messages: string[] } => {
+  const messages: string[] = [];
+  return {
+    error(message) {
+      messages.push(message);
+    },
+    info(message) {
+      messages.push(message);
+    },
+    messages,
+  };
+};
 
 class FakeTunnelConnection implements TunnelConnection {
   readonly sent: TunnelFrame[] = [];
@@ -63,6 +77,7 @@ const connectRawUpgrade = async (
   url: string,
   host = "demo.localhost",
   extraHeaders = "",
+  path = "/chat",
 ): Promise<{
   readonly socket: net.Socket;
   readonly waitForData: () => Promise<Buffer>;
@@ -88,7 +103,7 @@ const connectRawUpgrade = async (
   });
 
   socket.write(
-    "GET /chat HTTP/1.1\r\n" +
+    `GET ${path} HTTP/1.1\r\n` +
       `Host: ${host}\r\n` +
       "Connection: Upgrade\r\n" +
       "Upgrade: websocket\r\n" +
@@ -206,6 +221,47 @@ describe("public WebSocket upgrade tunneling", () => {
     expect(requestDataFrame).toMatchObject({ streamId: openFrame.streamId });
   });
 
+  it("logs safe websocket open and close summaries", async () => {
+    const logger = createLogger();
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      route: { type: "subdomain", subdomain: "demo" },
+      connection,
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      logger,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(
+      handle.url,
+      "demo.localhost",
+      "",
+      "/chat?token=secret",
+    );
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+    if (openFrame.type !== "open") {
+      throw new Error("expected websocket open frame");
+    }
+
+    connection.emitFrame({ streamId: openFrame.streamId, type: "close" });
+    await waitForSocketClose(rawClient.socket);
+
+    expect(logger.messages).toHaveLength(2);
+    expect(logger.messages[0]).toContain("[demo] WS /chat opened");
+    expect(logger.messages.at(-1)).toContain("[demo] WS /chat closed");
+    expect(logger.messages.join("\n")).not.toContain("token=secret");
+    expect(logger.messages.join("\n")).not.toContain("secret");
+  });
+
   it("closes websocket upgrades when the tunnel does not send a handshake response", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();
@@ -282,6 +338,47 @@ describe("public WebSocket upgrade tunneling", () => {
 
     expect(response.toString("utf8")).toContain("404 Not Found");
     expect(connection.sent).toEqual([]);
+  });
+
+  it("logs safe websocket no-route and no-tunnel summaries", async () => {
+    const logger = createLogger();
+    const registry = new TunnelRegistry();
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      domain: "proxy.example.com",
+      logger,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const noRouteClient = await connectRawUpgrade(
+      handle.url,
+      "unmatched.example.net",
+      "",
+      "/chat?token=secret",
+    );
+    cleanups.push(() => {
+      noRouteClient.socket.destroy();
+    });
+    const noRouteResponse = await noRouteClient.waitForData();
+    const noTunnelClient = await connectRawUpgrade(
+      handle.url,
+      "demo.proxy.example.com",
+      "",
+      "/chat?token=secret",
+    );
+    cleanups.push(() => {
+      noTunnelClient.socket.destroy();
+    });
+    const noTunnelResponse = await noTunnelClient.waitForData();
+
+    expect(noRouteResponse.toString("utf8")).toContain("404 Not Found");
+    expect(noTunnelResponse.toString("utf8")).toContain("404 Not Found");
+    expect(logger.messages).toHaveLength(2);
+    expect(logger.messages[0]).toContain("[unknown] WS /chat -> 404 no-route");
+    expect(logger.messages[1]).toContain("[demo] WS /chat -> 404 no-tunnel");
+    expect(logger.messages.join("\n")).not.toContain("token=secret");
+    expect(logger.messages.join("\n")).not.toContain("secret");
   });
 
   it("does not route untrusted websocket forwarded hosts", async () => {

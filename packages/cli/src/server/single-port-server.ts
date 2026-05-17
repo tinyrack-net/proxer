@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import { CONTROL_PATH, PROXER_INTERNAL_PREFIX } from "#app/config/constants.ts";
 import { formatHostPort, type HostPort } from "#app/lib/address.ts";
 import { ProxerError } from "#app/lib/error.ts";
+import type { RuntimeLogger } from "#app/lib/logging.ts";
 import { createControlWebSocketServer } from "#app/server/control-server.ts";
 import { handleHealthProbeRequest } from "#app/server/health-probes.ts";
 import {
@@ -16,6 +17,7 @@ import { handlePublicWebSocketUpgrade } from "#app/server/websocket-upgrade.ts";
 
 export type SinglePortServerOptions = {
   readonly listenAddress: HostPort;
+  readonly logger?: RuntimeLogger;
   readonly registry: TunnelRegistry;
   readonly domain?: string;
   readonly token?: string;
@@ -56,6 +58,7 @@ const isInternalPath = (pathname: string): boolean => {
 export const startSinglePortServer = async ({
   domain,
   listenAddress,
+  logger,
   registry,
   streamTimeoutMs = DEFAULT_STREAM_TIMEOUT_MS,
   token,
@@ -63,6 +66,7 @@ export const startSinglePortServer = async ({
 }: SinglePortServerOptions): Promise<SinglePortServerHandle> => {
   const upgradeSockets = new Set<Duplex>();
   const controlWebSocketServer = createControlWebSocketServer({
+    logger,
     registry,
     token,
   });
@@ -87,6 +91,7 @@ export const startSinglePortServer = async ({
 
     handlePublicHttpRequest({
       domain,
+      logger,
       registry,
       request,
       response,
@@ -121,6 +126,7 @@ export const startSinglePortServer = async ({
 
     handlePublicWebSocketUpgrade(request, socket, head, {
       domain,
+      logger,
       onSocket(upgradeSocket) {
         upgradeSockets.add(upgradeSocket);
         upgradeSocket.once("close", () => upgradeSockets.delete(upgradeSocket));

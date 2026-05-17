@@ -2,6 +2,11 @@ import { WebSocket } from "ws";
 import { attachLocalHttpForwarder } from "#app/client/local-http-forwarder.ts";
 import { attachLocalWebSocketForwarder } from "#app/client/local-websocket-forwarder.ts";
 import { ProxerError } from "#app/lib/error.ts";
+import {
+  type LogRoute,
+  type RuntimeLogger,
+  sanitizeLogUrl,
+} from "#app/lib/logging.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
 
 export type HttpClientConfig = {
@@ -11,6 +16,7 @@ export type HttpClientConfig = {
   readonly token?: string;
   readonly heartbeatIntervalMs?: number;
   readonly heartbeatTimeoutMs?: number;
+  readonly logger?: RuntimeLogger;
   readonly reconnectDelayMs?: number;
 };
 
@@ -33,6 +39,12 @@ const openWebSocket = async (url: string): Promise<WebSocket> => {
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 10_000;
 const DEFAULT_RECONNECT_DELAY_MS = 1_000;
+const silentLogger: RuntimeLogger = {
+  info() {},
+  error() {},
+};
+
+const formatRouteName = (subdomain?: string): string => subdomain ?? "root";
 
 const registerConnection = async ({
   connection,
@@ -155,6 +167,7 @@ export const startHttpTunnelClient = async ({
   heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
   heartbeatTimeoutMs = DEFAULT_HEARTBEAT_TIMEOUT_MS,
   localPort,
+  logger = silentLogger,
   reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
   serverUrl,
   subdomain,
@@ -164,6 +177,10 @@ export const startHttpTunnelClient = async ({
   if (!tunnelToken) {
     throw new ProxerError("token is required");
   }
+  const logServerUrl = sanitizeLogUrl(serverUrl);
+  const route: LogRoute = subdomain
+    ? { type: "subdomain", subdomain }
+    : { type: "root" };
 
   let activeConnection: ActiveTunnelConnection | undefined;
   let closing = false;
@@ -182,7 +199,11 @@ export const startHttpTunnelClient = async ({
   };
 
   const connect = async (): Promise<ActiveTunnelConnection> => {
+    logger.info(
+      `connecting server=${logServerUrl} route=${formatRouteName(subdomain)}`,
+    );
     const socket = await openWebSocket(serverUrl);
+    logger.info(`connected server=${logServerUrl}`);
     const connection = createWebSocketTunnelConnection(socket);
     await registerConnection({
       connection,
@@ -190,13 +211,18 @@ export const startHttpTunnelClient = async ({
       subdomain,
       token: tunnelToken,
     });
+    logger.info(`registered route=${formatRouteName(subdomain)}`);
     const detachLocalHttpForwarder = attachLocalHttpForwarder({
       connection,
       localPort,
+      logger,
+      route,
     });
     const detachLocalWebSocketForwarder = attachLocalWebSocketForwarder({
       connection,
       localPort,
+      logger,
+      route,
     });
     const stopHeartbeat = startHeartbeat({
       intervalMs: heartbeatIntervalMs,
@@ -220,6 +246,7 @@ export const startHttpTunnelClient = async ({
         return;
       }
 
+      logger.info(`disconnected route=${formatRouteName(subdomain)}`);
       cleanupActiveConnection();
       scheduleReconnect();
     });
@@ -233,6 +260,7 @@ export const startHttpTunnelClient = async ({
     try {
       const nextConnection = await connect();
       activateConnection(nextConnection);
+      logger.info(`reconnected route=${formatRouteName(subdomain)}`);
       if (closing) {
         const staleConnection = nextConnection;
         cleanupActiveConnection();
@@ -248,6 +276,7 @@ export const startHttpTunnelClient = async ({
       return;
     }
 
+    logger.info(`reconnecting in ${reconnectDelayMs}ms`);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined;
       void reconnect();
