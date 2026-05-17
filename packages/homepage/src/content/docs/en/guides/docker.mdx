@@ -1,33 +1,28 @@
 ---
 title: Docker
-description: Run Proxer from the published OCI image.
+description: Run the Proxer server or client from the OCI image.
 ---
 
-The OCI image is published to Docker Hub as `tinyrack/proxer` and to GHCR as `ghcr.io/tinyrack-net/proxer`.
+The image is published to Docker Hub as `tinyrack/proxer` and to GHCR as `ghcr.io/tinyrack-net/proxer`.
 
-Check the image version:
+Check the version:
 
 ```bash
 docker run --rm tinyrack/proxer --version
 ```
 
----
-
-## Run a Server
+## Run a server
 
 ```bash
-docker run --rm -p 8080:8080 tinyrack/proxer \
-  server \
-  --listen 0.0.0.0:8080 \
-  --domain proxy.example.com \
-  --token dev-token
+docker run --rm -p 8080:8080 \
+  -e PROXER_TOKEN="$PROXER_TOKEN" \
+  tinyrack/proxer \
+  server --listen 0.0.0.0:8080 --domain proxy.example.com
 ```
 
-The server does not require a volume. Tunnel registrations live in memory and are recreated when clients reconnect.
+The server does not need a volume. Tunnel registrations are in memory and are recreated when clients reconnect.
 
-`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
-
----
+Use `dev-token` only for local demos. For anything exposed outside your machine, set `PROXER_TOKEN` from a secret store instead of putting a long-lived token in the command line.
 
 ## Docker Compose
 
@@ -53,11 +48,24 @@ services:
       retries: 3
 ```
 
----
+## Client containers
 
-## Kubernetes Health Probes
+`proxer http <port>` forwards to `127.0.0.1:<port>` from inside the client process. In a container, that means the loopback interface inside that container.
 
-Use the fixed health endpoints when a platform can probe HTTP paths:
+On Linux, use host networking when the app is listening on the Docker host:
+
+```bash
+docker run --rm --network host \
+  -e PROXER_TOKEN="$PROXER_TOKEN" \
+  tinyrack/proxer \
+  http 3000 --server ws://127.0.0.1:8080 --subdomain demo
+```
+
+On Docker Desktop, `host.docker.internal` is not enough by itself because the client currently has no upstream host flag. Run the client on the host, or run it in the same container/network namespace as the app it should reach.
+
+## Kubernetes probes
+
+Use the fixed health endpoints when your platform can probe HTTP paths:
 
 ```text
 /__proxer__/health/live
@@ -70,9 +78,9 @@ The control endpoint is also fixed:
 /__proxer__/control
 ```
 
----
+Do not point probes at the control endpoint; it expects a WebSocket upgrade.
 
-## Environment Variables
+## Environment variables
 
 The server can be configured with `PROXER_` environment variables:
 
@@ -80,9 +88,9 @@ The server can be configured with `PROXER_` environment variables:
 docker run --rm -p 8080:8080 \
   -e PROXER_LISTEN=0.0.0.0:8080 \
   -e PROXER_DOMAIN=proxy.example.com \
-  -e PROXER_TOKEN=dev-token \
+  -e PROXER_TOKEN="$PROXER_TOKEN" \
   -e PROXER_TRUSTED_PROXIES=loopback,private \
   ghcr.io/tinyrack-net/proxer server
 ```
 
-Use `--trusted-proxy` flags or `PROXER_TRUSTED_PROXIES` when the container receives traffic from a reverse proxy you control.
+Set `--trusted-proxy` or `PROXER_TRUSTED_PROXIES` only for reverse proxies you control.

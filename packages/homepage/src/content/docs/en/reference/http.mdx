@@ -1,11 +1,9 @@
 ---
 title: proxer http
-description: Expose a local HTTP service through a tunnel.
+description: Command reference for tunnel clients.
 ---
 
-`proxer http <port>` connects a client-initiated tunnel to a public Proxer server and forwards requests to a local HTTP port.
-
----
+`proxer http <port>` connects to a public Proxer server and forwards matched public requests to `127.0.0.1:<port>` on the client machine.
 
 ## Usage
 
@@ -13,34 +11,26 @@ description: Expose a local HTTP service through a tunnel.
 proxer http 3000 --server wss://your-server.example.com --subdomain demo --token dev-token
 ```
 
----
-
 ## Options
 
-- `<port>` — local HTTP port to forward to. This positional argument has no environment variable.
-- `--server <url>` — public Proxer server URL. Proxer always connects to `/__proxer__/control` internally.
-- `--subdomain <name>` — register a subdomain route. Omit it to register the root domain route.
-- `--token <token>` — shared token matching the server.
+- `<port>`: local HTTP port to forward to. This positional argument has no environment variable.
+- `--server <url>`: Proxer server base URL. Accepted schemes are `ws://`, `wss://`, `http://`, and `https://`; HTTP schemes are converted to WebSocket schemes internally. Do not include a path, query, or fragment.
+- `--subdomain <name>`: register a subdomain route. Omit it to register the root route.
+- `--token <token>`: shared token matching the server.
 
-For public servers with tokens, use `wss://`. TLS can terminate at Caddy, Traefik, NGINX, or a load balancer and forward to Proxer over loopback or a private network.
+`--token` or `PROXER_TOKEN` is required. Without one, the command fails with `token is required`.
 
-`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
+## Environment variables
 
----
-
-## Environment Variables
-
-- `PROXER_SERVER` — default value for `--server`
-- `PROXER_SUBDOMAIN` — default value for `--subdomain`
-- `PROXER_TOKEN` — default value for `--token`
+- `PROXER_SERVER`: default value for `--server`.
+- `PROXER_SUBDOMAIN`: default value for `--subdomain`.
+- `PROXER_TOKEN`: default value for `--token`.
 
 CLI flags take precedence over environment variables.
 
----
+## Routes
 
-## Root Route
-
-Omit `--subdomain`:
+Root route:
 
 ```bash
 proxer http 3000 --server wss://proxy.example.com --token dev-token
@@ -48,11 +38,7 @@ proxer http 3000 --server wss://proxy.example.com --token dev-token
 
 Requests for `proxy.example.com` are sent to the local service.
 
----
-
-## Subdomain Route
-
-Pass `--subdomain`:
+Subdomain route:
 
 ```bash
 proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
@@ -60,8 +46,8 @@ proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-t
 
 Requests for `demo.proxy.example.com` are sent to the local service.
 
----
+Subdomains are lowercased and must be a single DNS label: letters, numbers, and hyphens only, no leading or trailing hyphen, max 63 characters.
 
-## Reconnect Behavior
+## Reconnect behavior
 
-If an established control connection drops, the client retries and registers again when the server is reachable. If the initial connection fails before the client is registered, the command may exit.
+If an established control connection drops, the client retries and registers again when the server is reachable. If the initial connection fails before registration, the command may exit.

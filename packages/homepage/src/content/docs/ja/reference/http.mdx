@@ -1,11 +1,9 @@
 ---
 title: proxer http
-description: トンネル経由でローカルHTTPサービスを公開します。
+description: トンネルクライアントのコマンドリファレンスです。
 ---
 
-`proxer http <port>`は、クライアント開始のトンネルを公開Proxerサーバーへ接続し、リクエストをローカルHTTPポートへ転送します。
-
----
+`proxer http <port>`は公開Proxerサーバーへ接続し、一致した公開リクエストをクライアントマシンの`127.0.0.1:<port>`へ転送します。
 
 ## 使い方
 
@@ -13,55 +11,43 @@ description: トンネル経由でローカルHTTPサービスを公開します
 proxer http 3000 --server wss://your-server.example.com --subdomain demo --token dev-token
 ```
 
----
-
 ## オプション
 
-- `<port>` — 転送先のローカルHTTPポートです。このpositional引数に環境変数はありません。
-- `--server <url>` — 公開ProxerサーバーURLです。Proxerは内部的に常に`/__proxer__/control`へ接続します。
-- `--subdomain <name>` — サブドメイン経路を登録します。省略するとルートドメイン経路を登録します。
-- `--token <token>` — サーバーと一致する共有トークンです。
+- `<port>`: 転送先のローカルHTTPポートです。このpositional引数に環境変数はありません。
+- `--server <url>`: Proxerサーバーのbase URLです。`ws://`、`wss://`、`http://`、`https://`を使えます。HTTP schemeは内部でWebSocket schemeへ変換されます。path、query、fragmentは含めないでください。
+- `--subdomain <name>`: サブドメイン経路を登録します。省略するとルート経路を登録します。
+- `--token <token>`: サーバーと一致する共有トークンです。
 
-トークンを使う公開サーバーでは`wss://`を使ってください。TLSはCaddy、Traefik、NGINX、またはロードバランサーで終端し、Proxerへはloopbackまたはprivate network経由で転送できます。
-
-`dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
-
----
+`--token`または`PROXER_TOKEN`は必須です。ない場合は`token is required`で終了します。
 
 ## 環境変数
 
-- `PROXER_SERVER` — `--server`のデフォルト値
-- `PROXER_SUBDOMAIN` — `--subdomain`のデフォルト値
-- `PROXER_TOKEN` — `--token`のデフォルト値
+- `PROXER_SERVER`: `--server`のデフォルト値。
+- `PROXER_SUBDOMAIN`: `--subdomain`のデフォルト値。
+- `PROXER_TOKEN`: `--token`のデフォルト値。
 
 CLI flagは環境変数より優先されます。
 
----
+## 経路
 
-## ルート経路
-
-`--subdomain`を省略します。
+ルート経路:
 
 ```bash
 proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
-`proxy.example.com`へのリクエストはローカルサービスへ送られます。
+`proxy.example.com`へのリクエストはローカルサービスへ転送されます。
 
----
-
-## サブドメイン経路
-
-`--subdomain`を指定します。
+サブドメイン経路:
 
 ```bash
 proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
 ```
 
-`demo.proxy.example.com`へのリクエストはローカルサービスへ送られます。
+`demo.proxy.example.com`へのリクエストはローカルサービスへ転送されます。
 
----
+サブドメインは小文字化され、単一のDNS labelである必要があります。英小文字、数字、ハイフンだけを使えます。先頭または末尾のハイフンは不可で、最大63文字です。
 
-## 再接続の動作
+## 再接続
 
-確立済みの制御接続が切れた場合、クライアントは再試行し、サーバーに再び到達できるようになると再登録します。初回接続が登録前に失敗した場合、コマンドは終了することがあります。
+確立済みの制御接続が切れた場合、クライアントは再試行し、サーバーに届くと再登録します。初回接続が登録前に失敗した場合、コマンドは終了することがあります。

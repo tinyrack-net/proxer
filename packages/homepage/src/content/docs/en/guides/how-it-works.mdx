@@ -1,11 +1,13 @@
 ---
 title: How It Works
-description: Proxer uses one listener and a client-initiated WebSocket tunnel.
+description: What happens when a request crosses a Proxer tunnel.
 ---
 
-Proxer uses one HTTP/WebSocket listener. Public traffic enters through that listener, and tunnel clients connect to a reserved control WebSocket path on the same port.
+Proxer has two sides. The public server listens where browsers and reverse proxies can reach it. The client runs next to the private service and dials out to the server. The private network does not need an inbound firewall rule for the app.
 
-Reserved internal paths:
+## One listener, reserved paths
+
+The public server uses one HTTP/WebSocket listener. These paths are reserved by Proxer:
 
 ```text
 /__proxer__/control
@@ -13,39 +15,33 @@ Reserved internal paths:
 /__proxer__/health/ready
 ```
 
-These paths are fixed. There is no `--control-path` option.
+There is no `--control-path` option. Clients receive a base URL such as `wss://proxy.example.com`; Proxer appends `/__proxer__/control` internally.
 
----
+## Control connection
 
-## The Control Connection
+`proxer http` opens a WebSocket connection to `/__proxer__/control`. After token authentication, it registers either the root route or a single subdomain route.
 
-A tunnel client connects to `/__proxer__/control` with WebSocket. After the connection opens, it registers either the root route or a subdomain route.
+When a public request arrives, the server creates a tunnel stream and sends request frames over that existing control connection. The client turns those frames into a request to `127.0.0.1:<port>`, then sends response headers and body chunks back on the same stream.
 
-When public traffic arrives, the server creates a stream ID and sends request frames over the control connection. The client forwards those frames to the local HTTP service, then sends response frames back to the server. Multiple requests can share one control connection because each stream has its own `streamId`.
+Multiple public requests can share one control connection because every stream has its own `streamId`.
 
----
-
-## Request Flow
+## Request flow
 
 1. A browser or reverse proxy sends a request to the public Proxer server.
-2. The server reads the `Host` header and finds the matching root or subdomain tunnel.
-3. The server opens a new tunnel stream for the request.
-4. The client forwards the request to the local service.
-5. Response headers and body chunks are sent back over the same tunnel stream.
-6. The public server writes the response to the original caller.
+2. The server reads the effective host and finds the matching root or subdomain route.
+3. The server opens a tunnel stream over the registered client's control connection.
+4. The client forwards the request to `127.0.0.1:<port>`.
+5. Response headers and body chunks return over that tunnel stream.
+6. The public server writes the response back to the original caller.
 
-HTTP streaming and Server-Sent Events are forwarded as chunks. WebSocket upgrades are proxied as bidirectional tunnel streams.
+HTTP streaming and Server-Sent Events are forwarded as chunks, not buffered as one whole response. WebSocket upgrades become bidirectional tunnel streams after the same host-routing step.
 
----
+## Reconnect behavior
 
-## Reconnect Behavior
+If an established control connection drops, the client cleans up active streams and tries to reconnect. When the server is reachable at the same URL, the client authenticates and registers again.
 
-If an established control connection drops, the client cleans up active streams and tries to reconnect. When the server comes back on the same URL, the client registers again.
+Initial startup is stricter. If you start the client while the server is unavailable, the command may fail before the reconnect loop exists. Start the server first.
 
-Initial startup is stricter: if the client starts while the server is unavailable, the command may fail before the reconnect loop exists. Start the server first, then start clients.
+## What Proxer will not guess
 
----
-
-## What Proxer Does Not Guess
-
-Proxer does not route a request to the only connected client just because there is one. The request host must match the registered root domain or a registered subdomain. This keeps multi-client deployments predictable.
+Proxer does not route a request to the only connected client just because there is one. The host must match the root domain route or a registered subdomain route. In practice, this avoids a class of confusing mistakes when several people or services share one tunnel server.

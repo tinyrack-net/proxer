@@ -1,56 +1,39 @@
 ---
 title: Proxer
-description: Self-hosted reverse tunnels for HTTP, SSE, and WebSocket services.
+description: Self-hosted reverse tunnels for private HTTP, SSE, and WebSocket services.
 ---
 
-`Proxer` is a **self-hosted reverse-tunnel CLI for exposing local HTTP, Server-Sent Events, and WebSocket services through a public server you control**.
+You have a service on a private machine and you need a stable URL for it. Maybe it is a dev server on a laptop, a dashboard on a homelab box, or an internal tool in a small office. You do not want to open inbound ports to that network just to make one HTTP app reachable.
 
----
+Proxer gives you the tunnel shape without outsourcing the public endpoint. Run one public Proxer server, then start clients from the private side. Each client dials out over WebSocket, registers a host route, and forwards public HTTP, Server-Sent Events, and WebSocket traffic to `127.0.0.1:<port>` on that client machine.
 
-## Why Proxer?
+## What it is good at
 
-Opening inbound ports for every local service is noisy and risky. SSH forwards are useful for one-off work, but they are awkward to share with a team or run behind a stable public hostname. Hosted tunnel services are convenient, but they put the control plane outside your infrastructure.
+- A stable public URL for a private HTTP service.
+- Client-initiated tunnels from NATed or firewalled networks.
+- One listener for public HTTP traffic, WebSocket upgrades, health probes, and tunnel control.
+- Explicit routing by host: root domain or one named subdomain.
+- Deployments where you already run a VPS, reverse proxy, or small edge box.
 
-Proxer keeps the workflow simple. Run one public server, then connect clients from private networks. Each client opens a persistent WebSocket control connection to the server, and public requests are multiplexed back over that client-initiated connection. Your local app only needs to listen on `127.0.0.1` or a private interface.
+## Routing is not guessed
 
-Routing is explicit. A client without `--subdomain` handles the root domain route. A client with `--subdomain demo` handles `demo.<domain>`. Unknown hosts return `404` instead of being guessed or sent to the only connected client.
+With `--domain proxy.example.com`, a client without `--subdomain` handles `proxy.example.com`. A client with `--subdomain demo` handles `demo.proxy.example.com`.
 
----
+If the incoming host does not match a registered route, Proxer returns `404`. It does not send traffic to the only connected client just because there is one. That is less magical, but much safer when a few tunnels are sharing the same server.
 
-## Key Features
-
-- **Single-port server** for public HTTP traffic, WebSocket upgrades, health probes, and tunnel control
-- **HTTP streaming** for regular responses and long-running responses
-- **Server-Sent Events** without buffering the response body
-- **WebSocket proxying** for realtime local applications
-- **Client-initiated tunnels** that work from NATed or private networks
-- **Root-domain and subdomain routing** with no single-client fallback
-- **Trusted proxy support** for Traefik and other reverse proxies you control
-- **Standalone executables, npm, Homebrew, and OCI images** for common deployment paths
-- **Agent skill installer** so AI agents can learn the Proxer workflow from a local skill file
-
----
-
-## How It Looks
+## First command shape
 
 ```bash
-# Start the public server
 proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
 
-# Expose a local app on a subdomain
 proxer http 3000 \
   --server wss://your-server.example.com \
   --subdomain demo \
   --token dev-token
 
-# Send public traffic to the tunnel
 curl https://demo.your-server.example.com/
 ```
 
-`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
+For real deployments, replace `dev-token` with a long random token supplied through `PROXER_TOKEN` or your platform's secret store.
 
----
-
-## Next Steps
-
-Head to [Getting Started](/en/getting-started/) to install Proxer and expose your first local service.
+Start with [Getting Started](/en/getting-started/) if you want the full local-to-public walkthrough.

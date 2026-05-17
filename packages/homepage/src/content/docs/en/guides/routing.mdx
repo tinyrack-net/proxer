@@ -1,15 +1,13 @@
 ---
 title: Routing and Trusted Proxies
-description: Route root and subdomain hosts, including deployments behind reverse proxies.
+description: Host routing, root routes, subdomain routes, and forwarded headers.
 ---
 
-Proxer routes public requests by host. This makes every route explicit and keeps unrelated clients isolated from each other.
+Proxer routes by host. That sounds ordinary, but it is the main thing to get right when a tunnel sits behind DNS, TLS, and a reverse proxy.
 
----
+## Root and subdomain routes
 
-## Root and Subdomain Routes
-
-Run the server with a public domain:
+Start the server with the public root domain:
 
 ```bash
 proxer server --listen 0.0.0.0:8080 --domain proxy.example.com --token dev-token
@@ -29,51 +27,54 @@ A client with `--subdomain demo` registers `demo.proxy.example.com`:
 proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
 ```
 
-Requests for unknown hosts return `404`.
+Requests for unknown hosts return `404`. Direct `localhost` or IP-based requests are not automatically routed to a connected client.
 
-`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
+## Local testing
 
----
-
-## Local Testing
-
-When you test without DNS, pass the host explicitly:
+Without DNS, send the host header yourself:
 
 ```bash
 curl -H 'Host: demo.proxy.example.com' http://127.0.0.1:8080/
 ```
 
-Direct `localhost` or IP-based requests are not automatically routed to a connected client.
+If the host header is wrong, Proxer cannot know which tunnel you meant.
 
----
+## Reverse proxies
 
-## Behind a Reverse Proxy
+For an internet-facing server, it is normal to terminate TLS in Caddy, Traefik, NGINX, a load balancer, or another reverse proxy. Forward HTTP and WebSocket traffic from that proxy to Proxer over loopback or a private network.
 
-If Traefik, Caddy, NGINX, a load balancer, or another reverse proxy sits in front of Proxer, terminate TLS there and forward HTTP/WebSocket traffic to Proxer over loopback or a private network. Keep the original host header. For Traefik, this usually means leaving `passHostHeader` enabled.
+Keep the original host. For Traefik, that usually means leaving `passHostHeader` enabled.
 
-Then tell Proxer which proxy addresses are trusted to provide forwarded headers:
+Then tell Proxer which TCP peers may provide forwarded headers:
 
 ```bash
 proxer server \
   --listen 0.0.0.0:8080 \
   --domain proxy.example.com \
   --trusted-proxy loopback \
-  --trusted-proxy private
+  --trusted-proxy private \
+  --token "$PROXER_TOKEN"
 ```
 
-The environment variable form is comma-separated:
+Environment variable form:
 
 ```bash
 PROXER_TRUSTED_PROXIES=loopback,private,10.42.0.0/16 proxer server --domain proxy.example.com
 ```
 
-Trusted proxies may supply `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, and `X-Forwarded-Proto`. When `--trusted-proxy` or `PROXER_TRUSTED_PROXIES` is configured, the reverse proxy must overwrite or strip inbound `X-Forwarded-*` and `X-Real-IP` headers from external clients before forwarding to Proxer, because Proxer trusts those headers from configured TCP peers. Untrusted peers are ignored for forwarded-header routing decisions.
+Trusted proxy values can be `loopback`, `private`, an IP literal, or a CIDR range.
 
----
+When a peer is trusted, Proxer may use `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, and `X-Forwarded-Proto` from that peer. Your reverse proxy must overwrite or strip inbound `X-Forwarded-*` and `X-Real-IP` headers from external clients before forwarding. Do not trust proxy addresses you do not control.
 
-## Reserved Internal Paths
+Without trusted proxies, Proxer ignores forwarded host, protocol, and client-IP headers for routing decisions.
 
-All Proxer internal endpoints live under `/__proxer__/`:
+## No configured domain
+
+For public deployments, set `--domain`. Without it, Proxer derives a subdomain route from the first label of the request host. That can be useful for local experiments, but it is easy to surprise yourself once real DNS and reverse proxies are involved.
+
+## Reserved paths
+
+All internal endpoints live under `/__proxer__/`:
 
 ```text
 /__proxer__/control
@@ -81,4 +82,4 @@ All Proxer internal endpoints live under `/__proxer__/`:
 /__proxer__/health/ready
 ```
 
-Do not route these paths to your local app. They are handled by the public server itself.
+Do not route those paths to your app. The public Proxer server handles them before application routing.

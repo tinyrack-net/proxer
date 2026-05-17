@@ -1,24 +1,24 @@
 ---
 title: 시작하기
-description: 몇 분 안에 Proxer를 설치하고 로컬 HTTP 서비스를 노출합니다.
+description: Proxer를 설치하고 로컬 HTTP 서비스를 공개합니다.
 ---
 
 import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
+이 문서는 가장 흔한 구성을 기준으로 설명합니다. 공개 서버는 인터넷 트래픽을 받고, 실제 앱은 노트북이나 사설망 장비에서 실행됩니다. 사설망 쪽 머신은 공개 서버로 나가는 연결만 만들면 됩니다.
+
 ## 준비물
 
-- HTTP/WebSocket 트래픽을 받을 수 있는 공개 서버
-- 노출할 로컬 HTTP 서비스
-- npm으로 설치하는 경우 Node.js 24 이상
-
----
+- HTTP/WebSocket 트래픽을 받을 수 있는 공개 머신 또는 reverse proxy.
+- 공개할 로컬 HTTP 서비스.
+- npm으로 설치한다면 Node.js 24 이상.
 
 ## 설치
 
 <Tabs>
   <TabItem label="Windows">
 
-    [GitHub Releases](https://github.com/tinyrack-net/proxer/releases)에서 Windows용 독립 실행 파일을 내려받습니다.
+    [GitHub Releases](https://github.com/tinyrack-net/proxer/releases)에서 Windows용 단일 실행 파일을 내려받습니다.
 
     ```powershell
     proxer.exe --version
@@ -34,8 +34,6 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
   </TabItem>
   <TabItem label="npm">
 
-    npm은 모든 플랫폼에서 사용할 수 있는 범용 설치 방법입니다.
-
     ```bash
     npm install -g @tinyrack/proxer
     ```
@@ -50,37 +48,33 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
   </TabItem>
 </Tabs>
 
----
+## 서비스 하나 공개하기
 
-## 처음 시작하기
-
-처음 Proxer를 사용한다면 다음 순서로 공개 서버 하나를 띄우고 로컬 서비스 하나를 노출합니다.
-
-아래의 공개 `wss://` 및 `https://` 예시는 Proxer 앞단의 reverse proxy 또는 load balancer가 TLS를 종료하고, loopback 또는 private network로 Proxer에 전달한다고 가정합니다.
+아래의 `wss://`와 `https://` 예시는 Proxer 앞단에서 TLS를 종료한다고 가정합니다. 보통 Caddy, Traefik, NGINX, 로드 밸런서가 TLS를 처리하고, Proxer로는 loopback 또는 사설 네트워크를 통해 HTTP/WebSocket 트래픽을 넘깁니다.
 
 <Steps>
 
 1. **공개 서버 시작**
 
-   공개 트래픽을 받을 서버에서 Proxer를 실행합니다.
+   공개 트래픽을 받을 머신에서 실행합니다.
 
    ```bash
    proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
    ```
 
-   이 서버는 같은 포트에서 공개 요청과 터널 제어 연결을 모두 처리합니다.
+   같은 포트에서 공개 요청과 터널 제어 WebSocket을 모두 처리합니다.
 
 2. **로컬 앱 시작**
 
-   클라이언트 머신에서 HTTP 서비스를 실행합니다. 아래 예시는 Python 내장 서버를 사용합니다.
+   클라이언트 머신에서 HTTP 서비스를 하나 띄웁니다. 확인용으로는 Python 서버면 충분합니다.
 
    ```bash
    python3 -m http.server 3000 --bind 127.0.0.1
    ```
 
-3. **루트 도메인 터널 연결**
+3. **루트 경로 등록**
 
-   `--subdomain`을 생략하면 루트 도메인 경로로 등록됩니다.
+   루트 호스트를 이 클라이언트로 보내려면 `--subdomain`을 생략합니다.
 
    ```bash
    proxer http 3000 \
@@ -88,15 +82,15 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
      --token dev-token
    ```
 
-4. **루트 경로 테스트**
+4. **루트 호스트 호출**
 
    ```bash
    curl https://your-server.example.com/
    ```
 
-5. **서브도메인 경로 사용**
+5. **서브도메인 경로 등록**
 
-   이름이 있는 경로가 필요하면 `--subdomain`을 지정합니다.
+   이름이 있는 경로가 필요하면 `--subdomain`을 사용합니다.
 
    ```bash
    proxer http 3000 \
@@ -105,32 +99,31 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
      --token dev-token
    ```
 
+6. **서브도메인 호스트 호출**
+
    ```bash
    curl https://demo.your-server.example.com/
    ```
 
 </Steps>
 
-<Aside type="tip">
-  인터넷에 노출되는 배포에서는 터널 클라이언트에 `wss://`를 사용하세요. TLS는 Caddy, Traefik, NGINX 또는 로드 밸런서에서 종료하고 Proxer로는 loopback 또는 private network를 통해 전달할 수 있습니다.
-</Aside>
-
 <Aside type="caution">
-  `dev-token`은 데모/로컬 테스트용입니다. 실제 배포에서는 긴 난수 토큰을 `PROXER_TOKEN`, Docker/Kubernetes secret, 또는 플랫폼의 secret 메커니즘으로 전달하세요. CLI 인자는 shell history나 process list에 노출될 수 있습니다.
+  `dev-token`은 데모와 로컬 테스트용입니다. 실제 배포에서는 긴 난수 값을 `PROXER_TOKEN`, 컨테이너 secret, Kubernetes secret, 또는 플랫폼의 secret 저장소로 전달하세요.
 </Aside>
 
 <Aside type="tip">
-  로컬에서 테스트할 때는 `Host` 헤더가 어떤 터널로 갈지 결정합니다. 운영 환경에서는 DNS나 reverse proxy가 Proxer 서버를 가리키게 하고 원래 Host 헤더를 보존하세요.
+  로컬 테스트에서는 `Host` 헤더가 어느 터널로 갈지 결정합니다. 운영 환경에서는 DNS와 reverse proxy가 원래 호스트를 보존해야 합니다.
 </Aside>
 
----
+## 로컬에서만 테스트하기
 
-## 다음에 볼 문서
+아직 DNS가 없다면 한 머신에서 전부 실행하고 `Host` 헤더만 직접 넣어도 됩니다.
 
-터널이 동작했다면 다음 가이드를 살펴보세요.
+```bash
+python3 -m http.server 3000 --bind 127.0.0.1
+proxer server --listen 127.0.0.1:8080 --domain proxy.localhost --token dev-token
+proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+curl -H 'Host: demo.proxy.localhost' http://127.0.0.1:8080/
+```
 
-- [동작 방식](/ko/guides/how-it-works/) — 제어 연결과 요청 흐름 이해하기
-- [라우팅과 신뢰 프록시](/ko/guides/routing/) — 루트 도메인, 서브도메인, reverse proxy 설정
-- [Docker](/ko/guides/docker/) — OCI 이미지로 공개 서버 실행하기
-- [proxer server](/ko/reference/server/) — 서버 명령어 레퍼런스
-- [proxer http](/ko/reference/http/) — 터널 클라이언트 명령어 레퍼런스
+요청이 어떻게 흐르는지는 [동작 방식](/ko/guides/how-it-works/)에서, Traefik/Caddy/NGINX 뒤에 둘 때의 주의점은 [라우팅과 신뢰 프록시](/ko/guides/routing/)에서 확인하세요.

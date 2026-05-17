@@ -1,11 +1,9 @@
 ---
 title: proxer server
-description: Start the public server and tunnel control listener.
+description: Command reference for the public server.
 ---
 
-`proxer server` starts the public HTTP/WebSocket listener and the tunnel control endpoint on one port.
-
----
+`proxer server` starts one HTTP/WebSocket listener for public traffic, health probes, and tunnel control.
 
 ## Usage
 
@@ -13,38 +11,32 @@ description: Start the public server and tunnel control listener.
 proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
 ```
 
----
-
 ## Options
 
-- `--listen <address>` — listen address. Defaults to `127.0.0.1:8080`. Use `0.0.0.0:8080` only when you intentionally expose Proxer directly on all interfaces; otherwise bind loopback and publish through a reverse proxy.
-- `--domain <domain>` — public root domain used to extract root and subdomain routes.
-- `--token <token>` — shared token required by tunnel clients. If omitted, only clients without a token match.
-- `--trusted-proxy <proxy>` — trusted reverse proxy preset, IP, or CIDR. Repeat the flag for multiple values.
+- `--listen <host:port>`: listen address. Defaults to `127.0.0.1:8080`.
+- `--domain <domain>`: public root domain used to resolve root and subdomain routes.
+- `--token <token>`: shared token required by tunnel clients.
+- `--trusted-proxy <proxy>`: trusted reverse proxy preset, IP, or CIDR. Repeat the flag for multiple values.
 
-`dev-token` is only for demos and local testing. For real deployments, use a long random token supplied through `PROXER_TOKEN`, Docker/Kubernetes secrets, or your platform's secret mechanism because CLI args can appear in shell history and process lists.
+If `--token` and `PROXER_TOKEN` are omitted, the server generates a strong token and prints it as `token: ...`. Copy that value to clients. For long-running deployments, prefer a secret store over relying on a token printed in terminal output.
 
 Trusted proxy presets:
 
-- `loopback` — loopback addresses
-- `private` — private IPv4 ranges and unique-local IPv6 ranges
+- `loopback`: loopback addresses.
+- `private`: private IPv4 ranges and unique-local IPv6 ranges.
 
-When `--trusted-proxy` or `PROXER_TRUSTED_PROXIES` is configured, the reverse proxy must overwrite or strip inbound `X-Forwarded-*` and `X-Real-IP` headers from external clients before forwarding to Proxer, because Proxer trusts those headers from configured TCP peers.
+When `--trusted-proxy` or `PROXER_TRUSTED_PROXIES` is configured, the reverse proxy must overwrite or strip inbound `X-Forwarded-*` and `X-Real-IP` headers from external clients before forwarding to Proxer.
 
----
+## Environment variables
 
-## Environment Variables
-
-- `PROXER_LISTEN` — default value for `--listen`
-- `PROXER_DOMAIN` — default value for `--domain`
-- `PROXER_TOKEN` — default value for `--token`
-- `PROXER_TRUSTED_PROXIES` — comma-separated trusted proxy values
+- `PROXER_LISTEN`: default value for `--listen`.
+- `PROXER_DOMAIN`: default value for `--domain`.
+- `PROXER_TOKEN`: default value for `--token`.
+- `PROXER_TRUSTED_PROXIES`: comma-separated trusted proxy values.
 
 CLI flags take precedence over environment variables.
 
----
-
-## Internal Endpoints
+## Internal endpoints
 
 The server reserves these fixed paths:
 
@@ -56,8 +48,6 @@ The server reserves these fixed paths:
 
 The control path is not configurable.
 
----
-
 ## Notes
 
-Run the server on the public machine or behind a reverse proxy that preserves the original `Host` header. Unknown hosts return `404`.
+Run the server on a public machine or behind a reverse proxy that preserves the original `Host` header. Unknown hosts return `404`.

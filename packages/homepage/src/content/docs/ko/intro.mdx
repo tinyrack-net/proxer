@@ -1,56 +1,38 @@
 ---
 title: Proxer
-description: HTTP, SSE, WebSocket 서비스를 위한 셀프 호스팅 리버스 터널입니다.
+description: 사설망의 HTTP, SSE, WebSocket 서비스를 위한 셀프 호스팅 리버스 터널입니다.
 ---
 
-`Proxer`는 **직접 운영하는 공개 서버를 통해 로컬 HTTP, Server-Sent Events, WebSocket 서비스를 노출하는 셀프 호스팅 리버스 터널 CLI**입니다.
+사설망에 있는 서비스에 안정적인 공개 URL이 필요할 때가 있습니다. 노트북의 개발 서버, 홈랩 장비의 대시보드, 작은 사무실 안쪽의 내부 도구처럼요. 그렇다고 그 네트워크로 들어오는 포트를 새로 열고 싶지는 않을 수 있습니다.
 
----
+Proxer는 공개 엔드포인트를 직접 운영하는 리버스 터널입니다. 공개 Proxer 서버 하나를 띄우고, 사설망 쪽에서 클라이언트가 WebSocket으로 접속합니다. 클라이언트는 호스트 경로를 등록하고, 공개 HTTP, Server-Sent Events, WebSocket 트래픽을 자기 머신의 `127.0.0.1:<port>`로 전달합니다.
 
-## 왜 Proxer인가요?
+## 잘 맞는 경우
 
-로컬 서비스마다 인바운드 포트를 여는 방식은 번거롭고 위험합니다. SSH 포워딩은 임시 작업에는 좋지만 팀과 공유하거나 안정적인 공개 호스트명으로 운영하기에는 불편합니다. 호스팅 터널 서비스는 편리하지만 제어 평면을 외부 서비스에 맡기게 됩니다.
+- NAT나 방화벽 뒤의 HTTP 서비스에 공개 URL이 필요할 때.
+- 터널 서버를 직접 운영하는 VPS, 홈랩 엣지, 회사 인프라 안에 두고 싶을 때.
+- HTTP 스트리밍, SSE, WebSocket 업그레이드가 터널을 지나야 할 때.
+- `proxy.example.com`과 `demo.proxy.example.com`처럼 호스트 기준 라우팅을 명확히 하고 싶을 때.
 
-Proxer는 흐름을 단순하게 유지합니다. 공개 서버 하나를 실행한 뒤, 사설 네트워크의 클라이언트를 연결합니다. 각 클라이언트는 서버로 영구 WebSocket 제어 연결을 열고, 공개 요청은 그 클라이언트가 시작한 연결 위에서 다시 로컬 서비스로 전달됩니다. 로컬 앱은 `127.0.0.1`이나 사설 인터페이스에만 열어두면 됩니다.
+## 라우팅은 추측하지 않습니다
 
-라우팅은 명시적입니다. `--subdomain`이 없는 클라이언트는 루트 도메인 경로를 처리합니다. `--subdomain demo`가 있는 클라이언트는 `demo.<domain>`을 처리합니다. 알 수 없는 호스트는 추측해서 보내지 않고 `404`를 반환합니다.
+`--domain proxy.example.com`을 설정하면, `--subdomain`이 없는 클라이언트는 `proxy.example.com`을 처리합니다. `--subdomain demo`를 지정한 클라이언트는 `demo.proxy.example.com`을 처리합니다.
 
----
+들어온 호스트가 등록된 경로와 맞지 않으면 Proxer는 `404`를 반환합니다. 연결된 클라이언트가 하나뿐이어도 거기로 보내지 않습니다. 덜 똑똑해 보일 수 있지만, 여러 터널이 서버 하나를 공유할 때 훨씬 예측하기 쉽습니다.
 
-## 주요 기능
-
-- **단일 포트 서버**로 공개 HTTP 트래픽, WebSocket 업그레이드, 헬스 체크, 터널 제어 처리
-- **HTTP 스트리밍**으로 일반 응답과 오래 지속되는 응답 전달
-- 응답 본문을 버퍼링하지 않는 **Server-Sent Events** 지원
-- 실시간 로컬 앱을 위한 **WebSocket 프록시**
-- NAT 또는 사설 네트워크에서도 동작하는 **클라이언트 시작 터널**
-- 단일 클라이언트 fallback 없는 **루트 도메인 및 서브도메인 라우팅**
-- Traefik 같은 reverse proxy를 위한 **신뢰 프록시** 지원
-- **독립 실행 파일, npm, Homebrew, OCI 이미지** 배포
-- AI 에이전트가 Proxer 사용법을 읽을 수 있는 **스킬 설치 명령**
-
----
-
-## 사용 예시
+## 기본 명령 형태
 
 ```bash
-# 공개 서버 시작
 proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
 
-# 로컬 앱을 서브도메인으로 노출
 proxer http 3000 \
   --server wss://your-server.example.com \
   --subdomain demo \
   --token dev-token
 
-# 공개 요청을 터널로 전달
 curl https://demo.your-server.example.com/
 ```
 
-`dev-token`은 데모/로컬 테스트용입니다. 실제 배포에서는 긴 난수 토큰을 `PROXER_TOKEN`, Docker/Kubernetes secret, 또는 플랫폼의 secret 메커니즘으로 전달하세요. CLI 인자는 shell history나 process list에 노출될 수 있습니다.
+실제 배포에서는 `dev-token` 대신 긴 난수 토큰을 만들고 `PROXER_TOKEN`이나 플랫폼의 secret 저장소로 전달하세요.
 
----
-
-## 다음 단계
-
-[시작하기](/ko/getting-started/)로 이동해 Proxer를 설치하고 첫 로컬 서비스를 노출해 보세요.
+처음부터 따라 하려면 [시작하기](/ko/getting-started/)를 보세요.

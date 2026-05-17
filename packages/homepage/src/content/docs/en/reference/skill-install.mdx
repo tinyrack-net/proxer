@@ -1,11 +1,9 @@
 ---
 title: proxer skill install
-description: Install a Proxer skill file for AI agents.
+description: Install a local Proxer reference file for coding agents.
 ---
 
-`proxer skill install <directory>` writes a reusable Proxer skill file for AI agents that need to run or explain Proxer workflows.
-
----
+`proxer skill install <directory>` writes a `proxer.md` file that coding agents can read when they need local command notes. It is optional and has no effect on the tunnel server or client.
 
 ## Usage
 
@@ -19,16 +17,12 @@ The command writes:
 <directory>/proxer.md
 ```
 
----
-
 ## Options
 
-- `--dry-run` — print the target path without creating a directory or writing a file.
-- `--force` — overwrite an existing `proxer.md` file.
+- `--dry-run`: print the target path without creating a directory or writing a file.
+- `--force`: overwrite an existing `proxer.md` file.
 
 There are no environment variables for this command.
-
----
 
 ## Examples
 
@@ -38,20 +32,16 @@ Preview the install location:
 proxer skill install ./skills --dry-run
 ```
 
-Install the skill:
+Install the file:
 
 ```bash
 proxer skill install ./skills
 ```
 
-Refresh an existing skill file:
+Refresh an existing file:
 
 ```bash
 proxer skill install ./skills --force
 ```
 
----
-
-## Overwrite Safety
-
-If `proxer.md` already exists, the command fails unless you pass `--force`. This keeps local agent instructions from being replaced accidentally.
+If `proxer.md` already exists, the command fails unless you pass `--force`.

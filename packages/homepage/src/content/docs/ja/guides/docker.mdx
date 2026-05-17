@@ -1,33 +1,28 @@
 ---
 title: Docker
-description: 公開済みOCIイメージでProxerを実行します。
+description: OCIイメージでProxerサーバーまたはクライアントを実行します。
 ---
 
-OCIイメージはDocker Hubの`tinyrack/proxer`とGHCRの`ghcr.io/tinyrack-net/proxer`で公開されています。
+イメージはDocker Hubの`tinyrack/proxer`とGHCRの`ghcr.io/tinyrack-net/proxer`で公開されています。
 
-イメージのバージョンを確認します。
+バージョンを確認します。
 
 ```bash
 docker run --rm tinyrack/proxer --version
 ```
 
----
-
 ## サーバーを実行する
 
 ```bash
-docker run --rm -p 8080:8080 tinyrack/proxer \
-  server \
-  --listen 0.0.0.0:8080 \
-  --domain proxy.example.com \
-  --token dev-token
+docker run --rm -p 8080:8080 \
+  -e PROXER_TOKEN="$PROXER_TOKEN" \
+  tinyrack/proxer \
+  server --listen 0.0.0.0:8080 --domain proxy.example.com
 ```
 
-サーバーにボリュームは不要です。トンネル登録はメモリ上にあり、クライアントが再接続すると再作成されます。
+サーバーにボリュームは不要です。トンネル登録はメモリ上にあり、クライアントが再接続すると再登録されます。
 
-`dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
-
----
+`dev-token`はローカルデモだけで使ってください。外部へ公開する環境では、長く使うトークンをコマンドラインに直接置かず、secret保存先から`PROXER_TOKEN`として渡すほうが安全です。
 
 ## Docker Compose
 
@@ -53,9 +48,22 @@ services:
       retries: 3
 ```
 
----
+## クライアントコンテナ
 
-## Kubernetesヘルスチェック
+`proxer http <port>`は、クライアントプロセスの中から`127.0.0.1:<port>`へ転送します。コンテナで実行する場合、それはそのコンテナ内のloopbackです。
+
+LinuxでアプリがDocker host上で待ち受けている場合は、host networkingを使うのが一般的です。
+
+```bash
+docker run --rm --network host \
+  -e PROXER_TOKEN="$PROXER_TOKEN" \
+  tinyrack/proxer \
+  http 3000 --server ws://127.0.0.1:8080 --subdomain demo
+```
+
+Docker Desktopでは、`host.docker.internal`だけでは足りません。現在のクライアントにはupstream hostを指定するflagがありません。クライアントをhostで直接動かすか、到達したいアプリと同じコンテナまたは同じnetwork namespaceで動かしてください。
+
+## Kubernetes probe
 
 プラットフォームがHTTPパスをprobeできる場合は、固定のヘルスエンドポイントを使います。
 
@@ -70,7 +78,7 @@ services:
 /__proxer__/control
 ```
 
----
+制御エンドポイントはWebSocket upgradeを期待するため、probe先には使わないでください。
 
 ## 環境変数
 
@@ -80,9 +88,9 @@ services:
 docker run --rm -p 8080:8080 \
   -e PROXER_LISTEN=0.0.0.0:8080 \
   -e PROXER_DOMAIN=proxy.example.com \
-  -e PROXER_TOKEN=dev-token \
+  -e PROXER_TOKEN="$PROXER_TOKEN" \
   -e PROXER_TRUSTED_PROXIES=loopback,private \
   ghcr.io/tinyrack-net/proxer server
 ```
 
-コンテナが管理下のreverse proxyからトラフィックを受ける場合は、`--trusted-proxy`または`PROXER_TRUSTED_PROXIES`を設定してください。
+`--trusted-proxy`または`PROXER_TRUSTED_PROXIES`は、自分で管理するreverse proxyにだけ設定してください。

@@ -1,11 +1,9 @@
 ---
 title: proxer server
-description: 公開サーバーとトンネル制御リスナーを起動します。
+description: 公開サーバーのコマンドリファレンスです。
 ---
 
-`proxer server`は、公開HTTP/WebSocketリスナーとトンネル制御エンドポイントを1つのポートで起動します。
-
----
+`proxer server`は、公開トラフィック、health probe、トンネル制御を処理するHTTP/WebSocketリスナーを1つ起動します。
 
 ## 使い方
 
@@ -13,36 +11,30 @@ description: 公開サーバーとトンネル制御リスナーを起動しま�
 proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
 ```
 
----
-
 ## オプション
 
-- `--listen <address>` — 待ち受けアドレスです。デフォルトは`127.0.0.1:8080`です。`0.0.0.0:8080`は全interfaceでProxerを直接公開する明示的な選択の場合だけ使ってください。それ以外はloopbackにbindし、reverse proxy経由で公開してください。
-- `--domain <domain>` — ルートおよびサブドメイン経路を取り出す公開ルートドメインです。
-- `--token <token>` — トンネルクライアントと共有するトークンです。省略した場合、トークンなしのクライアントだけが一致します。
-- `--trusted-proxy <proxy>` — 信頼するreverse proxyのpreset、IP、CIDRです。複数指定する場合はflagを繰り返します。
+- `--listen <host:port>`: 待ち受けアドレスです。デフォルトは`127.0.0.1:8080`です。
+- `--domain <domain>`: ルートおよびサブドメイン経路を計算する公開ルートドメインです。
+- `--token <token>`: トンネルクライアントが使う共有トークンです。
+- `--trusted-proxy <proxy>`: 信頼するreverse proxyのpreset、IP、CIDRです。複数指定する場合はflagを繰り返します。
 
-`dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
+`--token`と`PROXER_TOKEN`をどちらも省略すると、サーバーは強いトークンを生成し、`token: ...`として表示します。その値をクライアントへコピーしてください。長く動かす環境では、ターミナル出力に頼るよりsecret保存先を使うほうが扱いやすいです。
 
 信頼済みプロキシpreset:
 
-- `loopback` — loopbackアドレス
-- `private` — プライベートIPv4レンジとunique-local IPv6レンジ
+- `loopback`: loopbackアドレス。
+- `private`: プライベートIPv4レンジとunique-local IPv6レンジ。
 
-`--trusted-proxy`または`PROXER_TRUSTED_PROXIES`を設定した場合、reverse proxyは外部クライアントから届いた`X-Forwarded-*`と`X-Real-IP`ヘッダーをProxerへ転送する前に上書きまたは削除する必要があります。Proxerは設定済みTCP peerからのこれらのヘッダーを信頼するためです。
-
----
+`--trusted-proxy`または`PROXER_TRUSTED_PROXIES`を設定した場合、reverse proxyは外部クライアントから届いた`X-Forwarded-*`と`X-Real-IP`ヘッダーをProxerへ転送する前に上書きまたは削除する必要があります。
 
 ## 環境変数
 
-- `PROXER_LISTEN` — `--listen`のデフォルト値
-- `PROXER_DOMAIN` — `--domain`のデフォルト値
-- `PROXER_TOKEN` — `--token`のデフォルト値
-- `PROXER_TRUSTED_PROXIES` — comma-separatedの信頼済みプロキシ値
+- `PROXER_LISTEN`: `--listen`のデフォルト値。
+- `PROXER_DOMAIN`: `--domain`のデフォルト値。
+- `PROXER_TOKEN`: `--token`のデフォルト値。
+- `PROXER_TRUSTED_PROXIES`: comma-separatedの信頼済みプロキシ値。
 
 CLI flagは環境変数より優先されます。
-
----
 
 ## 内部エンドポイント
 
@@ -55,8 +47,6 @@ CLI flagは環境変数より優先されます。
 ```
 
 制御パスは設定できません。
-
----
 
 ## 補足
 

@@ -1,17 +1,17 @@
 ---
 title: はじめに
-description: 数分でProxerをインストールし、ローカルHTTPサービスを公開します。
+description: Proxerをインストールし、ローカルHTTPサービスを公開します。
 ---
 
 import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
 
-## 前提条件
+このページでは、よくある構成を使います。公開サーバーがインターネットからのトラフィックを受け、実際のアプリはノートPCやプライベートなマシンで動きます。プライベート側のマシンは、公開サーバーへ外向きに接続できれば十分です。
 
-- HTTP/WebSocketトラフィックを受けられる公開マシン
-- 公開したいローカルHTTPサービス
-- npmでインストールする場合はNode.js 24以降
+## 必要なもの
 
----
+- HTTP/WebSocketトラフィックを受けられる公開マシン、またはreverse proxy。
+- 公開したいローカルHTTPサービス。
+- npmで入れる場合はNode.js 24以降。
 
 ## インストール
 
@@ -34,8 +34,6 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
   </TabItem>
   <TabItem label="npm">
 
-    npmはすべてのプラットフォームで使えるクロスプラットフォームなインストール方法です。
-
     ```bash
     npm install -g @tinyrack/proxer
     ```
@@ -50,37 +48,33 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
   </TabItem>
 </Tabs>
 
----
+## サービスを1つ公開する
 
-## 新しく始める
-
-初めてProxerを使う場合は、次の手順で公開サーバーを1つ起動し、ローカルサービスを1つ公開します。
-
-以下の公開`wss://`および`https://`の例は、Proxerの前段にあるreverse proxyまたはload balancerでTLSを終端し、loopbackまたはprivate network経由でProxerへ転送することを前提にしています。
+次の`wss://`と`https://`の例では、Proxerの前段でTLSを終端している前提です。多くの場合、Caddy、Traefik、NGINX、ロードバランサーがTLSを受け、Proxerへはloopbackまたはプライベートネットワーク経由でHTTP/WebSocketを渡します。
 
 <Steps>
 
 1. **公開サーバーを起動する**
 
-   公開トラフィックを受けるマシンでProxerを実行します。
+   公開トラフィックを受けるマシンで実行します。
 
    ```bash
    proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
    ```
 
-   このサーバーは同じポートで公開リクエストとトンネル制御接続を処理します。
+   同じポートで公開リクエストとトンネル制御WebSocketを処理します。
 
 2. **ローカルアプリを起動する**
 
-   クライアントマシンでHTTPサービスを起動します。次の例ではPythonの組み込みサーバーを使います。
+   クライアントマシンでHTTPサービスを起動します。動作確認ならPythonサーバーで十分です。
 
    ```bash
    python3 -m http.server 3000 --bind 127.0.0.1
    ```
 
-3. **ルートドメインのトンネルを接続する**
+3. **ルート経路を登録する**
 
-   `--subdomain`を省略すると、ルートドメインの経路として登録されます。
+   ルートホストをこのクライアントへ送る場合は、`--subdomain`を省略します。
 
    ```bash
    proxer http 3000 \
@@ -88,15 +82,15 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
      --token dev-token
    ```
 
-4. **ルート経路をテストする**
+4. **ルートホストを呼ぶ**
 
    ```bash
    curl https://your-server.example.com/
    ```
 
-5. **サブドメイン経路を使う**
+5. **サブドメイン経路を登録する**
 
-   名前付きの経路が必要な場合は`--subdomain`を指定します。
+   名前付きの経路が必要なら`--subdomain`を使います。
 
    ```bash
    proxer http 3000 \
@@ -105,32 +99,31 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
      --token dev-token
    ```
 
+6. **サブドメインホストを呼ぶ**
+
    ```bash
    curl https://demo.your-server.example.com/
    ```
 
 </Steps>
 
-<Aside type="tip">
-  インターネットに公開するデプロイでは、トンネルクライアントに`wss://`を使ってください。TLSはCaddy、Traefik、NGINX、またはロードバランサーで終端し、Proxerへはloopbackまたはprivate network経由で転送できます。
-</Aside>
-
 <Aside type="caution">
-  `dev-token`はデモ/ローカルテスト用です。実運用では長いランダムトークンを`PROXER_TOKEN`、Docker/Kubernetes secret、またはプラットフォームのsecret機構で渡してください。CLI引数はshell historyやprocess listに露出する可能性があります。
+  `dev-token`はデモとローカルテスト用です。実運用では、長いランダム値を`PROXER_TOKEN`、コンテナsecret、Kubernetes secret、またはプラットフォームのsecret保存先から渡してください。
 </Aside>
 
 <Aside type="tip">
-  ローカルでテストするときは、`Host`ヘッダーがどのトンネルへ送られるかを決めます。本番ではDNSまたはreverse proxyをProxerサーバーへ向け、元のHostヘッダーを保持してください。
+  ローカルテストでは`Host`ヘッダーで行き先のトンネルが決まります。本番では、DNSとreverse proxyが元のホスト名を保つようにしてください。
 </Aside>
 
----
+## ローカルだけで試す
 
-## 次に読むもの
+まだDNSがない場合は、同じマシンですべて動かし、`Host`ヘッダーだけ明示します。
 
-トンネルが動いたら、次のガイドを見てみましょう。
+```bash
+python3 -m http.server 3000 --bind 127.0.0.1
+proxer server --listen 127.0.0.1:8080 --domain proxy.localhost --token dev-token
+proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+curl -H 'Host: demo.proxy.localhost' http://127.0.0.1:8080/
+```
 
-- [仕組み](/ja/guides/how-it-works/) — 制御接続とリクエストの流れを理解する
-- [ルーティングと信頼済みプロキシ](/ja/guides/routing/) — ルートドメイン、サブドメイン、reverse proxyを設定する
-- [Docker](/ja/guides/docker/) — OCIイメージで公開サーバーを実行する
-- [proxer server](/ja/reference/server/) — サーバーコマンドのリファレンス
-- [proxer http](/ja/reference/http/) — トンネルクライアントのリファレンス
+リクエストの流れは[仕組み](/ja/guides/how-it-works/)を、Traefik/Caddy/NGINXの背後に置くときの注意点は[ルーティングと信頼済みプロキシ](/ja/guides/routing/)を見てください。
