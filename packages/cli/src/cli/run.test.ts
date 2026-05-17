@@ -106,6 +106,50 @@ describe("runtime assembly", () => {
     await runPromise;
   });
 
+  it("does not log a manually supplied server token", async () => {
+    const logger = createLogger();
+    const process = createSignalTarget();
+    const closed: string[] = [];
+
+    const runPromise = runServer(
+      {
+        listenAddress: { host: "127.0.0.1", port: 8080 },
+        token: "manual-token",
+      },
+      {
+        logger,
+        process,
+        async startServer() {
+          return {
+            controlUrl: "ws://127.0.0.1:8080/__proxer__/control",
+            publicUrl: "http://127.0.0.1:8080",
+            token: "manual-token",
+            async close() {
+              closed.push("server");
+            },
+          };
+        },
+      },
+    );
+
+    await Promise.resolve();
+
+    expect(logger.messages).toContain("public: http://127.0.0.1:8080");
+    expect(logger.messages).toContain(
+      "control: ws://127.0.0.1:8080/__proxer__/control",
+    );
+    expect(logger.messages).not.toContain("token: manual-token");
+    expect(
+      logger.messages.some((message) => message.includes("manual-token")),
+    ).toBe(false);
+
+    process.emit("SIGTERM");
+    await runPromise;
+
+    expect(closed).toEqual(["server"]);
+    expect(logger.messages).toContain("server stopped");
+  });
+
   it("starts the HTTP tunnel client, logs forwarding details, and closes on SIGTERM", async () => {
     const logger = createLogger();
     const process = createSignalTarget();
