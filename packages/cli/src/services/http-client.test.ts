@@ -42,6 +42,34 @@ const createLocalTextServer = async (): Promise<{
   };
 };
 
+const createCountingLocalTextServer = async (): Promise<{
+  readonly port: number;
+  getRequestCount(): number;
+  close(): Promise<void>;
+}> => {
+  let requestCount = 0;
+  const server = http.createServer((_request, response) => {
+    requestCount += 1;
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("ok");
+  });
+  const address = await listenOnRandomPort(server);
+
+  return {
+    port: address.port,
+    getRequestCount() {
+      return requestCount;
+    },
+    async close() {
+      await closeServer(server);
+    },
+  };
+};
+
+const sleep = async (durationMs: number): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
+};
+
 const waitFor = async (
   predicate: () => boolean,
   message: string,
@@ -210,6 +238,123 @@ describe("HTTP tunnel client reliability", () => {
       body: "ok",
       status: 200,
     });
+  });
+
+  it("does not duplicate forwarding after reconnect", async () => {
+    const localServer = await createCountingLocalTextServer();
+    cleanups.push(() => localServer.close());
+    const registry = new TunnelRegistry();
+    const publicServer = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => publicServer.close());
+    const controlServer = await startControlServer({
+      address: randomAddress,
+      registry,
+      token: "secret",
+    });
+    cleanups.push(() => controlServer.close());
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: localServer.port,
+      reconnectDelayMs: 10,
+      serverUrl: controlServer.url,
+      subdomain: "demo",
+      token: "secret",
+    });
+    cleanups.push(() => client.close());
+    const firstConnection = registry.get({
+      type: "subdomain",
+      subdomain: "demo",
+    })?.connection;
+    if (!firstConnection) {
+      throw new Error("expected initial registration");
+    }
+
+    await firstConnection.close(1011, "drop");
+    await waitFor(() => {
+      const nextConnection = registry.get({
+        type: "subdomain",
+        subdomain: "demo",
+      })?.connection;
+      return nextConnection !== undefined && nextConnection !== firstConnection;
+    }, "expected tunnel client to reconnect");
+    const secondConnection = registry.get({
+      type: "subdomain",
+      subdomain: "demo",
+    })?.connection;
+    if (!secondConnection) {
+      throw new Error("expected second registration");
+    }
+
+    await secondConnection.close(1011, "drop again");
+    await waitFor(() => {
+      const nextConnection = registry.get({
+        type: "subdomain",
+        subdomain: "demo",
+      })?.connection;
+      return (
+        nextConnection !== undefined && nextConnection !== secondConnection
+      );
+    }, "expected tunnel client to reconnect again");
+
+    await expect(requestPublic(publicServer.url)).resolves.toEqual({
+      body: "ok",
+      status: 200,
+    });
+    expect(localServer.getRequestCount()).toBe(1);
+  });
+
+  it("does not reconnect after close is called during a reconnect delay", async () => {
+    const localServer = await createCountingLocalTextServer();
+    cleanups.push(() => localServer.close());
+    const registry = new TunnelRegistry();
+    const publicServer = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => publicServer.close());
+    const controlServer = await startControlServer({
+      address: randomAddress,
+      registry,
+      token: "secret",
+    });
+    cleanups.push(() => controlServer.close());
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: localServer.port,
+      reconnectDelayMs: 100,
+      serverUrl: controlServer.url,
+      subdomain: "demo",
+      token: "secret",
+    });
+    cleanups.push(() => client.close());
+    const firstConnection = registry.get({
+      type: "subdomain",
+      subdomain: "demo",
+    })?.connection;
+    if (!firstConnection) {
+      throw new Error("expected initial registration");
+    }
+
+    await firstConnection.close(1011, "drop");
+    await waitFor(
+      () =>
+        registry.get({ type: "subdomain", subdomain: "demo" }) === undefined,
+      "expected tunnel to unregister before close",
+    );
+    await client.close();
+    await sleep(150);
+
+    expect(
+      registry.get({ type: "subdomain", subdomain: "demo" }),
+    ).toBeUndefined();
+    await expect(requestPublic(publicServer.url)).resolves.toEqual({
+      body: "No tunnel registered for subdomain demo\n",
+      status: 404,
+    });
+    expect(localServer.getRequestCount()).toBe(0);
   });
 
   it("fails fast without a token", async () => {

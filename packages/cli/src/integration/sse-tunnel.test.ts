@@ -3,12 +3,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { HostPort } from "#app/lib/address.ts";
 import { startHttpTunnelClient } from "#app/services/http-client.ts";
 import { startServer } from "#app/services/server.ts";
-import { createLocalSseServer } from "#app/test/local-servers.ts";
+import {
+  createLocalSseServer,
+  listenOnRandomPort,
+} from "#app/test/local-servers.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
 
 const requestSse = (
   url: string,
+  pathname = "/events",
 ): {
   readonly firstChunk: Promise<string>;
   readonly fullResponse: Promise<{
@@ -23,7 +27,7 @@ const requestSse = (
     resolveFirstChunk = resolve;
     rejectFirstChunk = reject;
   });
-  const requestUrl = new URL("/events", url);
+  const requestUrl = new URL(pathname, url);
   const fullResponse = new Promise<{
     body: string;
     headers: http.IncomingHttpHeaders;
@@ -106,5 +110,95 @@ describe("SSE tunnel integration", () => {
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toBe("text/event-stream");
     expect(response.body).toBe("data: one\n\ndata: two\n\n");
+  });
+
+  it("streams concurrent SSE clients independently", async () => {
+    const timers = new Set<NodeJS.Timeout>();
+    const localServer = http.createServer((request, response) => {
+      const requestUrl = new URL(request.url ?? "/", "http://localhost");
+      const streamId = requestUrl.searchParams.get("stream");
+      if (requestUrl.pathname !== "/events" || streamId === null) {
+        response.writeHead(404, {
+          "content-type": "text/plain; charset=utf-8",
+        });
+        response.end("Not found\n");
+        return;
+      }
+
+      response.writeHead(200, {
+        "cache-control": "no-cache",
+        "content-type": "text/event-stream",
+      });
+      response.write(`data: ${streamId}:one\n\n`);
+
+      const delayMs = (Number(streamId.replace("stream-", "")) % 3) * 10;
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        response.write(`data: ${streamId}:two\n\n`);
+        response.end();
+      }, delayMs);
+      timers.add(timer);
+    });
+    const localAddress = await listenOnRandomPort(localServer);
+    cleanups.push(async () => {
+      for (const timer of timers) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+      await new Promise<void>((resolve, reject) => {
+        localServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    });
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localAddress.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+
+    const requests = ["stream-0", "stream-1", "stream-2"].map((streamId) => ({
+      streamId,
+      ...requestSse(proxerServer.publicUrl, `/events?stream=${streamId}`),
+    }));
+    const firstChunks = await Promise.all(
+      requests.map(async ({ firstChunk, streamId }) => ({
+        streamId,
+        chunk: await firstChunk,
+      })),
+    );
+
+    expect(firstChunks).toEqual([
+      { streamId: "stream-0", chunk: "data: stream-0:one\n\n" },
+      { streamId: "stream-1", chunk: "data: stream-1:one\n\n" },
+      { streamId: "stream-2", chunk: "data: stream-2:one\n\n" },
+    ]);
+
+    const responses = await Promise.all(
+      requests.map(async ({ fullResponse, streamId }) => ({
+        streamId,
+        response: await fullResponse,
+      })),
+    );
+
+    for (const { response, streamId } of responses) {
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toBe("text/event-stream");
+      expect(response.body).toBe(
+        `data: ${streamId}:one\n\ndata: ${streamId}:two\n\n`,
+      );
+    }
   });
 });

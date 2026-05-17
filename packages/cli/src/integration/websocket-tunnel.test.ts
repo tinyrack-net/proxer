@@ -40,6 +40,16 @@ const waitForClose = async (socket: WebSocket): Promise<void> => {
   });
 };
 
+const createDeterministicBuffer = (size: number): Buffer => {
+  const payload = Buffer.allocUnsafe(size);
+
+  for (let index = 0; index < payload.length; index += 1) {
+    payload[index] = (index * 31 + 17) % 256;
+  }
+
+  return payload;
+};
+
 describe("WebSocket tunnel integration", () => {
   const cleanups: Array<() => Promise<void>> = [];
 
@@ -102,5 +112,122 @@ describe("WebSocket tunnel integration", () => {
     publicSocket.close();
     await waitForClose(publicSocket);
     await localConnectionClosed;
+  });
+
+  it("isolates concurrent public websocket connections over one tunnel", async () => {
+    const localWebSocketServer = await createLocalWebSocketEchoServer();
+    cleanups.push(() => localWebSocketServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localWebSocketServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+    const publicWebSocketUrl = proxerServer.publicUrl.replace(
+      "http://",
+      "ws://",
+    );
+    const publicSockets = await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        openWebSocket(`${publicWebSocketUrl}/echo/${index}`),
+      ),
+    );
+    for (const socket of publicSockets) {
+      cleanups.push(
+        () =>
+          new Promise<void>((resolve) => {
+            if (socket.readyState === WebSocket.CLOSED) {
+              resolve();
+              return;
+            }
+            socket.once("close", () => resolve());
+            socket.close();
+          }),
+      );
+    }
+
+    const textMessages = publicSockets.map((socket, index) => ({
+      expected: `socket-${index}:text`,
+      socket,
+    }));
+    for (const { expected, socket } of textMessages) {
+      socket.send(expected);
+    }
+    const textResponses = await Promise.all(
+      textMessages.map(async ({ expected, socket }) => ({
+        expected,
+        response: await waitForMessage(socket),
+      })),
+    );
+
+    for (const { expected, response } of textResponses) {
+      expect(response.isBinary).toBe(false);
+      expect(response.data.toString("utf8")).toBe(expected);
+    }
+
+    const binaryMessages = publicSockets.map((socket, index) => ({
+      expected: Buffer.from(`socket-${index}:binary`),
+      socket,
+    }));
+    for (const { expected, socket } of binaryMessages) {
+      socket.send(expected);
+    }
+    const binaryResponses = await Promise.all(
+      binaryMessages.map(async ({ expected, socket }) => ({
+        expected,
+        response: await waitForMessage(socket),
+      })),
+    );
+
+    for (const { expected, response } of binaryResponses) {
+      expect(response.isBinary).toBe(true);
+      expect(response.data).toEqual(expected);
+    }
+  });
+
+  it("preserves a large binary websocket payload through the full tunnel", async () => {
+    const localWebSocketServer = await createLocalWebSocketEchoServer();
+    cleanups.push(() => localWebSocketServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localWebSocketServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+    const publicWebSocketUrl = proxerServer.publicUrl.replace(
+      "http://",
+      "ws://",
+    );
+    const publicSocket = await openWebSocket(`${publicWebSocketUrl}/echo`);
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve) => {
+          if (publicSocket.readyState === WebSocket.CLOSED) {
+            resolve();
+            return;
+          }
+          publicSocket.once("close", () => resolve());
+          publicSocket.close();
+        }),
+    );
+    const payload = createDeterministicBuffer(512 * 1024);
+
+    publicSocket.send(payload);
+    const response = await waitForMessage(publicSocket);
+
+    expect(response.isBinary).toBe(true);
+    expect(response.data).toEqual(payload);
   });
 });

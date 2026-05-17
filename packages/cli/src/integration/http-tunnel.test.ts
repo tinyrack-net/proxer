@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import type { HostPort } from "#app/lib/address.ts";
@@ -33,6 +34,199 @@ const createLocalJsonEchoServer = async (): Promise<{
   return {
     port: address.port,
     async close() {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    },
+  };
+};
+
+const createLocalDelayedJsonEchoServer = async (): Promise<{
+  readonly port: number;
+  close(): Promise<void>;
+}> => {
+  const timers = new Set<NodeJS.Timeout>();
+  const server = http.createServer((request, response) => {
+    const chunks: Buffer[] = [];
+
+    request.on("data", (chunk: Buffer) => {
+      chunks.push(Buffer.from(chunk));
+    });
+    request.on("end", () => {
+      const id = Number(request.url?.match(/^\/api\/(\d+)$/)?.[1] ?? 0);
+      const timer = setTimeout(
+        () => {
+          timers.delete(timer);
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              body: Buffer.concat(chunks).toString("utf8"),
+              method: request.method,
+              path: request.url,
+            }),
+          );
+        },
+        (id % 5) * 5,
+      );
+      timers.add(timer);
+    });
+  });
+  const address = await listenOnRandomPort(server);
+
+  return {
+    port: address.port,
+    async close() {
+      for (const timer of timers) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    },
+  };
+};
+
+const createLocalNamedJsonServer = async (
+  name: string,
+): Promise<{
+  readonly port: number;
+  close(): Promise<void>;
+}> => {
+  const server = http.createServer((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        name,
+        path: request.url,
+      }),
+    );
+  });
+  const address = await listenOnRandomPort(server);
+
+  return {
+    port: address.port,
+    async close() {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    },
+  };
+};
+
+const createDeterministicBuffer = (size: number): Buffer => {
+  const payload = Buffer.allocUnsafe(size);
+
+  for (let index = 0; index < payload.length; index += 1) {
+    payload[index] = (index * 31 + 17) % 256;
+  }
+
+  return payload;
+};
+
+const sha256 = (payload: Buffer): string => {
+  return createHash("sha256").update(payload).digest("hex");
+};
+
+const createLocalRequestDigestServer = async (): Promise<{
+  readonly port: number;
+  close(): Promise<void>;
+}> => {
+  const server = http.createServer((request, response) => {
+    const chunks: Buffer[] = [];
+
+    request.on("data", (chunk: Buffer) => {
+      chunks.push(Buffer.from(chunk));
+    });
+    request.on("end", () => {
+      const body = Buffer.concat(chunks);
+
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          bodySha256: sha256(body),
+          bodySize: body.length,
+          method: request.method,
+          path: request.url,
+        }),
+      );
+    });
+  });
+  const address = await listenOnRandomPort(server);
+
+  return {
+    port: address.port,
+    async close() {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    },
+  };
+};
+
+const createLocalChunkedBinaryServer = async (
+  chunks: Buffer[],
+): Promise<{
+  readonly port: number;
+  close(): Promise<void>;
+}> => {
+  const timers = new Set<NodeJS.Timeout>();
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/octet-stream" });
+
+    const writeChunk = (index: number) => {
+      if (index >= chunks.length) {
+        response.end();
+        return;
+      }
+
+      response.write(chunks[index]);
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        writeChunk(index + 1);
+      }, 1);
+      timers.add(timer);
+    };
+
+    writeChunk(0);
+  });
+  const address = await listenOnRandomPort(server);
+
+  return {
+    port: address.port,
+    async close() {
+      for (const timer of timers) {
+        clearTimeout(timer);
+      }
+      timers.clear();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
@@ -88,6 +282,102 @@ const requestPublicJson = async (
   });
 };
 
+const postPublicJson = async ({
+  body,
+  host,
+  path,
+  publicUrl,
+}: {
+  readonly body: string;
+  readonly host: string;
+  readonly path: string;
+  readonly publicUrl: string;
+}): Promise<{
+  readonly body: string;
+  readonly headers: http.IncomingHttpHeaders;
+  readonly status: number;
+}> => {
+  const requestUrl = new URL(path, publicUrl);
+
+  return await new Promise((resolve, reject) => {
+    const request = http.request(
+      requestUrl,
+      {
+        headers: {
+          "content-type": "text/plain",
+          host,
+        },
+        method: "POST",
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => {
+          chunks.push(Buffer.from(chunk));
+        });
+        response.on("end", () => {
+          resolve({
+            body: Buffer.concat(chunks).toString("utf8"),
+            headers: response.headers,
+            status: response.statusCode ?? 0,
+          });
+        });
+        response.on("error", reject);
+      },
+    );
+    request.on("error", reject);
+    request.end(body);
+  });
+};
+
+const requestPublicBuffer = async ({
+  body,
+  host,
+  method = "GET",
+  path,
+  publicUrl,
+}: {
+  readonly body?: Buffer;
+  readonly host: string;
+  readonly method?: string;
+  readonly path: string;
+  readonly publicUrl: string;
+}): Promise<{
+  readonly body: Buffer;
+  readonly headers: http.IncomingHttpHeaders;
+  readonly status: number;
+}> => {
+  const requestUrl = new URL(path, publicUrl);
+
+  return await new Promise((resolve, reject) => {
+    const request = http.request(
+      requestUrl,
+      {
+        headers: {
+          ...(body ? { "content-length": body.length } : {}),
+          host,
+        },
+        method,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => {
+          chunks.push(Buffer.from(chunk));
+        });
+        response.on("end", () => {
+          resolve({
+            body: Buffer.concat(chunks),
+            headers: response.headers,
+            status: response.statusCode ?? 0,
+          });
+        });
+        response.on("error", reject);
+      },
+    );
+    request.on("error", reject);
+    request.end(body);
+  });
+};
+
 describe("HTTP tunnel integration", () => {
   const cleanups: Array<() => Promise<void>> = [];
 
@@ -124,6 +414,125 @@ describe("HTTP tunnel integration", () => {
       method: "POST",
       path: "/api/hello?x=1",
     });
+  });
+
+  it("isolates concurrent HTTP streams over one tunnel", async () => {
+    const localServer = await createLocalDelayedJsonEchoServer();
+    cleanups.push(() => localServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+
+    const requests = Array.from({ length: 20 }, (_, index) => {
+      const requestId = `request-${index}`;
+
+      return {
+        body: `body-${requestId}`,
+        path: `/api/${index}`,
+        requestId,
+      };
+    });
+
+    const responses = await Promise.all(
+      requests.map(async (request) => ({
+        request,
+        response: await postPublicJson({
+          body: request.body,
+          host: "demo.localhost",
+          path: request.path,
+          publicUrl: proxerServer.publicUrl,
+        }),
+      })),
+    );
+
+    for (const { request, response } of responses) {
+      expect(response.status).toBe(200);
+      expect(response.headers["content-type"]).toBe("application/json");
+      expect(JSON.parse(response.body)).toEqual({
+        body: request.body,
+        method: "POST",
+        path: request.path,
+      });
+    }
+  });
+
+  it("preserves a large HTTP request body through the full tunnel", async () => {
+    const localServer = await createLocalRequestDigestServer();
+    cleanups.push(() => localServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+    const payload = createDeterministicBuffer(1024 * 1024);
+
+    const response = await requestPublicBuffer({
+      body: payload,
+      host: "demo.localhost",
+      method: "POST",
+      path: "/upload",
+      publicUrl: proxerServer.publicUrl,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("application/json");
+    expect(JSON.parse(response.body.toString("utf8"))).toEqual({
+      bodySha256: sha256(payload),
+      bodySize: payload.length,
+      method: "POST",
+      path: "/upload",
+    });
+  });
+
+  it("preserves a chunked HTTP response through the full tunnel", async () => {
+    const responseChunks = Array.from({ length: 16 }, (_, index) => {
+      const chunk = createDeterministicBuffer(64 * 1024);
+      chunk[0] = index;
+
+      return chunk;
+    });
+    const expectedBody = Buffer.concat(responseChunks);
+    const localServer = await createLocalChunkedBinaryServer(responseChunks);
+    cleanups.push(() => localServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+
+    const response = await requestPublicBuffer({
+      host: "demo.localhost",
+      path: "/download",
+      publicUrl: proxerServer.publicUrl,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("application/octet-stream");
+    expect(response.body.length).toBe(expectedBody.length);
+    expect(sha256(response.body)).toBe(sha256(expectedBody));
   });
 
   it("returns 404 for direct localhost requests without a matching route", async () => {
@@ -184,6 +593,64 @@ describe("HTTP tunnel integration", () => {
 
     expect(rootResponse.status).toBe(200);
     expect(demoResponse.status).toBe(200);
+    expect(unknownResponse.status).toBe(404);
+  });
+
+  it("isolates multiple subdomain clients under one server", async () => {
+    const routes = ["alpha", "beta", "gamma"] as const;
+    const localServers = await Promise.all(
+      routes.map(async (route) => ({
+        route,
+        server: await createLocalNamedJsonServer(route),
+      })),
+    );
+    for (const { server } of localServers) {
+      cleanups.push(() => server.close());
+    }
+    const proxerServer = await startServer({
+      domain: "proxy.example.test",
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClients = await Promise.all(
+      localServers.map(async ({ route, server }) =>
+        startHttpTunnelClient({
+          localPort: server.port,
+          serverUrl: proxerServer.controlUrl,
+          subdomain: route,
+          token: "dev-token",
+        }),
+      ),
+    );
+    for (const tunnelClient of tunnelClients) {
+      cleanups.push(() => tunnelClient.close());
+    }
+
+    const responses = await Promise.all(
+      routes.map(async (route) => ({
+        response: await requestPublicJson(proxerServer.publicUrl, {
+          host: `${route}.proxy.example.test`,
+        }),
+        route,
+      })),
+    );
+    const unknownResponse = await requestPublicJson(proxerServer.publicUrl, {
+      host: "unknown.proxy.example.test",
+    });
+
+    for (const { response, route } of responses) {
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        name: route,
+        path: "/api/hello?x=1",
+      });
+      for (const otherRoute of routes.filter(
+        (candidate) => candidate !== route,
+      )) {
+        expect(response.body).not.toContain(otherRoute);
+      }
+    }
     expect(unknownResponse.status).toBe(404);
   });
 
