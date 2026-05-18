@@ -387,18 +387,22 @@ describe("CLI E2E", () => {
       serverProcess,
       /^public: (http:\/\/127\.0\.0\.1:\d+)$/m,
     );
-    if (!publicMatch[1]) {
+    const publicUrl = publicMatch[1];
+    if (!publicUrl) {
       throw new Error(
         `CLI did not print a public URL:\n${combinedOutput(serverProcess)}`,
       );
     }
-    const publicUrl = `http://proxy.localhost:${serverPort}`;
+    const clientServerUrl =
+      process.platform === "win32"
+        ? publicUrl
+        : `http://proxy.localhost:${serverPort}`;
 
     const clientProcess = spawnCli([
       "http",
       String(localServer.port),
       "--server",
-      publicUrl,
+      clientServerUrl,
       "--token",
       "e2e-token",
     ]);
@@ -409,11 +413,18 @@ describe("CLI E2E", () => {
     );
     const subdomain = subdomainMatch[1];
     expect(subdomain).toMatch(/^px-/);
-    const clientPublicMatch = await waitForOutput(
-      clientProcess,
-      new RegExp(`^public: .*${subdomain}.*$`, "m"),
-    );
-    expect(clientPublicMatch[0]).toContain(`public: http://${subdomain}.`);
+    if (process.platform === "win32") {
+      await waitForOutput(
+        clientProcess,
+        /^public: http:\/\/127\.0\.0\.1:\d+$/m,
+      );
+    } else {
+      const clientPublicMatch = await waitForOutput(
+        clientProcess,
+        new RegExp(`^public: .*${subdomain}.*$`, "m"),
+      );
+      expect(clientPublicMatch[0]).toContain(`public: http://${subdomain}.`);
+    }
 
     const response = await requestPublic(publicUrl, {
       host: `${subdomain}.proxy.localhost`,
