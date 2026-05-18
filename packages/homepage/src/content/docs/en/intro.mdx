@@ -12,12 +12,12 @@ Proxer gives you the tunnel shape without outsourcing the public endpoint. Run o
 - A stable public URL for a private HTTP service.
 - Client-initiated tunnels from NATed or firewalled networks.
 - One listener for public HTTP traffic, WebSocket upgrades, health probes, and tunnel control.
-- Explicit routing by host: root domain or one named subdomain.
+- Explicit routing by host with auto-assigned, chosen subdomain, or root-domain routes.
 - Deployments where you already run a VPS, reverse proxy, or small edge box.
 
 ## Routing is not guessed
 
-With `--domain proxy.example.com`, a client without `--subdomain` handles `proxy.example.com`. A client with `--subdomain demo` handles `demo.proxy.example.com`.
+With `--domain proxy.example.com`, a client without `--subdomain` gets a random subdomain such as `px-k7m3q9t2ab.proxy.example.com`. A client with `--subdomain demo` handles `demo.proxy.example.com`. A client with `--subdomain @` handles the root host `proxy.example.com`.
 
 If the incoming host does not match a registered route, Proxer returns `404`. It does not send traffic to the only connected client just because there is one. That is less magical, but much safer when a few tunnels are sharing the same server.
 

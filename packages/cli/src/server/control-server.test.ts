@@ -3,7 +3,10 @@ import { type RawData, WebSocket } from "ws";
 import { type HostPort, parseHostPort } from "#app/lib/address.ts";
 import { decodeFrame, encodeFrame } from "#app/protocol/frame-codec.ts";
 import { startControlServer } from "#app/server/control-server.ts";
-import { TunnelRegistry } from "#app/server/stream-registry.ts";
+import {
+  DuplicateTunnelRouteError,
+  TunnelRegistry,
+} from "#app/server/stream-registry.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
 
@@ -135,10 +138,11 @@ describe("control server", () => {
     ]);
   });
 
-  it("registers a root-domain client when subdomain is omitted", async () => {
+  it("registers a generated subdomain when route is omitted", async () => {
     const registry = new TunnelRegistry();
     const handle = await startControlServer({
       address: randomAddress,
+      generateSubdomain: () => "px-auto",
       registry,
     });
     handles.push(handle);
@@ -147,8 +151,194 @@ describe("control server", () => {
 
     socket.send(encodeFrame({ type: "register" }));
 
+    await expect(nextMessage(socket)).resolves.toEqual({
+      type: "registered",
+      subdomain: "px-auto",
+    });
+    expect(
+      registry.get({ type: "subdomain", subdomain: "px-auto" })?.route,
+    ).toEqual({ type: "subdomain", subdomain: "px-auto" });
+    expect(registry.get({ type: "root" })).toBeUndefined();
+  });
+
+  it("registers a root-domain client when root is true", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      generateSubdomain: () => "px-auto",
+      registry,
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    socket.send(encodeFrame({ type: "register", root: true }));
+
     await expect(nextMessage(socket)).resolves.toEqual({ type: "registered" });
     expect(registry.get({ type: "root" })?.route).toEqual({ type: "root" });
+    expect(
+      registry.get({ type: "subdomain", subdomain: "px-auto" }),
+    ).toBeUndefined();
+  });
+
+  it("retries when a generated subdomain collides", async () => {
+    const registry = new TunnelRegistry();
+    const candidates = ["px-collide", "px-free"];
+    const handle = await startControlServer({
+      address: randomAddress,
+      generateSubdomain: () => candidates.shift() ?? "px-extra",
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({ type: "register", subdomain: "px-collide" }),
+    );
+    await nextMessage(firstSocket);
+    secondSocket.send(encodeFrame({ type: "register" }));
+
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      type: "registered",
+      subdomain: "px-free",
+    });
+    expect(
+      registry.get({ type: "subdomain", subdomain: "px-free" })?.route,
+    ).toEqual({ type: "subdomain", subdomain: "px-free" });
+  });
+
+  it("retries generated subdomain collisions using typed duplicate route errors", async () => {
+    class RenamedDuplicateRegistry extends TunnelRegistry {
+      override register(
+        tunnel: Parameters<TunnelRegistry["register"]>[0],
+      ): void {
+        if (
+          tunnel.route.type === "subdomain" &&
+          tunnel.route.subdomain === "px-collide"
+        ) {
+          throw new DuplicateTunnelRouteError(tunnel.route, "route occupied");
+        }
+
+        super.register(tunnel);
+      }
+    }
+
+    const registry = new RenamedDuplicateRegistry();
+    const candidates = ["px-collide", "px-free"];
+    const handle = await startControlServer({
+      address: randomAddress,
+      generateSubdomain: () => candidates.shift() ?? "px-extra",
+      registry,
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    socket.send(encodeFrame({ type: "register" }));
+
+    await expect(nextMessage(socket)).resolves.toEqual({
+      type: "registered",
+      subdomain: "px-free",
+    });
+    expect(
+      registry.get({ type: "subdomain", subdomain: "px-free" })?.route,
+    ).toEqual({ type: "subdomain", subdomain: "px-free" });
+  });
+
+  it("retries invalid generated subdomains without registering them", async () => {
+    const registry = new TunnelRegistry();
+    const candidates = ["bad.name", "px-free"];
+    const handle = await startControlServer({
+      address: randomAddress,
+      generateSubdomain: () => candidates.shift() ?? "px-extra",
+      registry,
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    socket.send(encodeFrame({ type: "register" }));
+
+    await expect(nextMessage(socket)).resolves.toEqual({
+      type: "registered",
+      subdomain: "px-free",
+    });
+    expect(
+      registry.get({ type: "subdomain", subdomain: "bad.name" }),
+    ).toBeUndefined();
+    expect(
+      registry.get({ type: "subdomain", subdomain: "px-free" })?.route,
+    ).toEqual({ type: "subdomain", subdomain: "px-free" });
+  });
+
+  it("fails cleanly when generated subdomains are invalid", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      generateSubdomain: () => "bad.name",
+      randomSubdomainMaxAttempts: 2,
+      registry,
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+    const close = new Promise<{ code: number; reason: string }>((resolve) => {
+      socket.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString("utf8") }),
+      );
+    });
+
+    socket.send(encodeFrame({ type: "register" }));
+
+    await expect(nextMessage(socket)).resolves.toEqual({
+      type: "error",
+      streamId: "registration",
+      message: "Could not allocate a random tunnel subdomain",
+    });
+    await expect(close).resolves.toEqual({
+      code: 1008,
+      reason: "Could not allocate a random tunnel subdomain",
+    });
+    expect(
+      registry.get({ type: "subdomain", subdomain: "bad.name" }),
+    ).toBeUndefined();
+  });
+
+  it("fails registration when generated subdomains all collide", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      generateSubdomain: () => "px-collide",
+      randomSubdomainMaxAttempts: 2,
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({ type: "register", subdomain: "px-collide" }),
+    );
+    await nextMessage(firstSocket);
+    const close = new Promise<{ code: number; reason: string }>((resolve) => {
+      secondSocket.once("close", (code, reason) =>
+        resolve({ code, reason: reason.toString("utf8") }),
+      );
+    });
+    secondSocket.send(encodeFrame({ type: "register" }));
+
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      type: "error",
+      streamId: "registration",
+      message: "Could not allocate a random tunnel subdomain",
+    });
+    await expect(close).resolves.toEqual({
+      code: 1008,
+      reason: "Could not allocate a random tunnel subdomain",
+    });
   });
 
   it("rejects an invalid registration subdomain without registering it", async () => {

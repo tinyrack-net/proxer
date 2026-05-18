@@ -492,8 +492,8 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -511,6 +511,36 @@ describe("HTTP tunnel integration", () => {
     });
   });
 
+  it("proxies HTTP requests through an auto-assigned subdomain", async () => {
+    const localServer = await createLocalJsonEchoServer();
+    cleanups.push(() => localServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localServer.port,
+      serverUrl: proxerServer.controlUrl,
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+
+    expect(tunnelClient.subdomain).toMatch(/^px-/);
+    const response = await requestPublicJson(proxerServer.publicUrl, {
+      host: `${tunnelClient.subdomain}.localhost`,
+    });
+    const rootResponse = await requestPublicJson(proxerServer.publicUrl);
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({
+      body: "hello world",
+      method: "POST",
+      path: "/api/hello?x=1",
+    });
+    expect(rootResponse.status).toBe(404);
+  });
+
   it("requires public basic auth before forwarding HTTP requests", async () => {
     const localServer = await createLocalNamedJsonServer("protected");
     cleanups.push(() => localServer.close());
@@ -522,8 +552,8 @@ describe("HTTP tunnel integration", () => {
     const tunnelClient = await startHttpTunnelClient({
       basicAuth: { password: "site-secret" },
       localPort: localServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -551,6 +581,40 @@ describe("HTTP tunnel integration", () => {
     expect(localServer.requestCount).toBe(1);
   });
 
+  it("requires public basic auth with an auto-assigned subdomain", async () => {
+    const localServer = await createLocalNamedJsonServer("protected");
+    cleanups.push(() => localServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      basicAuth: { password: "site-secret" },
+      localPort: localServer.port,
+      serverUrl: proxerServer.controlUrl,
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+    const host = `${tunnelClient.subdomain}.localhost`;
+
+    const missingAuthResponse = await requestPublicJson(
+      proxerServer.publicUrl,
+      { host },
+    );
+    const authorizedResponse = await requestPublicJson(proxerServer.publicUrl, {
+      authorization: basic("anything:site-secret"),
+      host,
+    });
+
+    expect(missingAuthResponse.status).toBe(401);
+    expect(authorizedResponse.status).toBe(200);
+    expect(JSON.parse(authorizedResponse.body)).toEqual({
+      name: "protected",
+      path: "/api/hello?x=1",
+    });
+  });
+
   it("isolates concurrent HTTP streams over one tunnel", async () => {
     const localServer = await createLocalDelayedJsonEchoServer();
     cleanups.push(() => localServer.close());
@@ -561,8 +625,8 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -610,8 +674,8 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -652,8 +716,8 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -680,8 +744,8 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -704,14 +768,15 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const rootTunnelClient = await startHttpTunnelClient({
       localPort: rootLocalServer.port,
+      route: { type: "root" },
       serverUrl: proxerServer.controlUrl,
       token: "dev-token",
     });
     cleanups.push(() => rootTunnelClient.close());
     const demoTunnelClient = await startHttpTunnelClient({
       localPort: demoLocalServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => demoTunnelClient.close());
@@ -752,8 +817,8 @@ describe("HTTP tunnel integration", () => {
       localServers.map(async ({ route, server }) =>
         startHttpTunnelClient({
           localPort: server.port,
+          route: { type: "subdomain", subdomain: route },
           serverUrl: proxerServer.controlUrl,
-          subdomain: route,
           token: "dev-token",
         }),
       ),
@@ -799,8 +864,8 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -821,8 +886,8 @@ describe("HTTP tunnel integration", () => {
     const oldTunnelClient = await startHttpTunnelClient({
       localPort: oldLocalServer.port,
       reconnectDelayMs: 60_000,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => oldTunnelClient.close());
@@ -845,8 +910,8 @@ describe("HTTP tunnel integration", () => {
     cleanups.push(() => newLocalServer.close());
     const newTunnelClient = await startHttpTunnelClient({
       localPort: newLocalServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => newTunnelClient.close());

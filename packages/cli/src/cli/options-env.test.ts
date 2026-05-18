@@ -170,8 +170,47 @@ describe("CLI PROXER_ environment options", () => {
 
     expect(firstHttpConfig()).toEqual({
       localPort: 3000,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: "wss://proxy.example.com/__proxer__/control",
-      subdomain: "demo",
+      token: "secret",
+    });
+  });
+
+  it("uses automatic HTTP subdomain assignment when no route is configured", async () => {
+    await runCli(
+      ["http", "3000"],
+      createCapturedProcess({ PROXER_TOKEN: "secret" }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      route: { type: "auto" },
+      token: "secret",
+    });
+  });
+
+  it("uses root-domain routing for the HTTP subdomain flag sentinel", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "@"],
+      createCapturedProcess({ PROXER_TOKEN: "secret" }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      route: { type: "root" },
+      token: "secret",
+    });
+  });
+
+  it("uses root-domain routing for the HTTP subdomain environment sentinel", async () => {
+    await runCli(
+      ["http", "3000"],
+      createCapturedProcess({
+        PROXER_SUBDOMAIN: "@",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      route: { type: "root" },
       token: "secret",
     });
   });
@@ -227,9 +266,37 @@ describe("CLI PROXER_ environment options", () => {
 
     expect(firstHttpConfig()).toEqual({
       localPort: 3000,
+      route: { type: "subdomain", subdomain: "flag" },
       serverUrl: "wss://flag.example.com/__proxer__/control",
-      subdomain: "flag",
       token: "flag-secret",
+    });
+  });
+
+  it("prefers an HTTP subdomain flag over an environment root sentinel", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "demo"],
+      createCapturedProcess({
+        PROXER_SUBDOMAIN: "@",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+  });
+
+  it("prefers an HTTP root sentinel flag over an environment subdomain", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "@"],
+      createCapturedProcess({
+        PROXER_SUBDOMAIN: "demo",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      route: { type: "root" },
     });
   });
 
@@ -320,7 +387,7 @@ describe("CLI PROXER_ environment options", () => {
     );
 
     expect(firstHttpConfig()).toMatchObject({
-      subdomain: "mixed-case",
+      route: { type: "subdomain", subdomain: "mixed-case" },
       token: "secret",
     });
   });

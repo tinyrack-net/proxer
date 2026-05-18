@@ -13,13 +13,21 @@ Start the server with the public root domain:
 proxer server --listen 0.0.0.0:8080 --domain proxy.example.com --token dev-token
 ```
 
-A client without `--subdomain` registers the root route:
+A client without `--subdomain` gets a server-assigned random subdomain:
 
 ```bash
 proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
-Requests for `proxy.example.com` go to that client.
+The client prints the assigned public URL, such as `https://px-k7m3q9t2ab.proxy.example.com`. Reconnects during the same run keep using that assigned subdomain.
+
+Use `--subdomain @` when you intentionally want the root route:
+
+```bash
+proxer http 3000 --server wss://proxy.example.com --subdomain @ --token dev-token
+```
+
+Requests for `proxy.example.com` go to that root-route client. Root routing is intended for servers started with `--domain`; without one, Proxer derives routes from the first host label.
 
 A client with `--subdomain demo` registers `demo.proxy.example.com`:
 

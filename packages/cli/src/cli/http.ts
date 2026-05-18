@@ -22,6 +22,11 @@ type HttpFlags = {
   readonly token?: string;
 };
 
+type HttpRouteRequest =
+  | { readonly type: "auto" }
+  | { readonly type: "root" }
+  | { readonly type: "subdomain"; readonly subdomain: string };
+
 const parseLocalPort = (input: string): number => {
   if (!/^\d+$/.test(input)) {
     throw new ProxerError("local port must be a number");
@@ -33,6 +38,18 @@ const parseLocalPort = (input: string): number => {
   }
 
   return port;
+};
+
+const parseHttpRoute = (input: string | undefined): HttpRouteRequest => {
+  if (input === undefined) {
+    return { type: "auto" };
+  }
+
+  if (input.trim() === "@") {
+    return { type: "root" };
+  }
+
+  return { type: "subdomain", subdomain: parseHttpSubdomain(input) };
 };
 
 export const buildHttpCommand = () => {
@@ -75,6 +92,7 @@ export const buildHttpCommand = () => {
           readEnvString({ env, name: "PROXER_SERVER" }),
         ) ?? DEFAULT_HTTP_SERVER_URL;
       const envSubdomain = readEnvString({ env, name: "PROXER_SUBDOMAIN" });
+      const route = parseHttpRoute(preferFlag(flags.subdomain, envSubdomain));
       const basicAuthPassword = preferFlag(
         flags.basicAuthPassword,
         readEnvString({ env, name: "PROXER_BASIC_AUTH_PASSWORD" }),
@@ -100,11 +118,8 @@ export const buildHttpCommand = () => {
               }
             : {}),
           localPort,
+          route,
           serverUrl: resolveControlServerUrl({ server }),
-          subdomain: preferFlag(
-            flags.subdomain,
-            envSubdomain ? parseHttpSubdomain(envSubdomain) : undefined,
-          ),
           token,
         },
         { logger: this.logger, process: this.process },

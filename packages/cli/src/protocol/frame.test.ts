@@ -4,6 +4,10 @@ import { assertTunnelFrame, isTunnelFrame } from "#app/protocol/frame.ts";
 describe("tunnel frame validation", () => {
   it("accepts valid frames", () => {
     expect(isTunnelFrame({ type: "register" })).toBe(true);
+    expect(isTunnelFrame({ type: "register", root: true })).toBe(true);
+    expect(
+      isTunnelFrame({ type: "register", root: true, token: "secret" }),
+    ).toBe(true);
     expect(isTunnelFrame({ type: "register", subdomain: "demo" })).toBe(true);
     expect(isTunnelFrame({ type: "registered" })).toBe(true);
     expect(isTunnelFrame({ type: "registered", subdomain: "demo" })).toBe(true);
@@ -96,6 +100,15 @@ describe("tunnel frame validation", () => {
     expect(isTunnelFrame({ type: "registered", name: "demo" })).toBe(false);
     expect(isTunnelFrame({ type: "register", subdomain: "" })).toBe(false);
     expect(isTunnelFrame({ type: "registered", subdomain: "" })).toBe(false);
+  });
+
+  it("rejects invalid explicit root registration frames", () => {
+    expect(
+      isTunnelFrame({ type: "register", root: true, subdomain: "demo" }),
+    ).toBe(false);
+    expect(isTunnelFrame({ type: "register", root: false })).toBe(false);
+    expect(isTunnelFrame({ type: "register", root: null })).toBe(false);
+    expect(isTunnelFrame({ type: "register", root: "true" })).toBe(false);
   });
 
   it.each([

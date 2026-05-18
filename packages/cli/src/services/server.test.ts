@@ -61,24 +61,28 @@ describe("server service", () => {
   it("generates a strong token when none is configured", async () => {
     const server = await startServer({ listenAddress: randomAddress });
     const token = (server as { readonly token?: string }).token;
+    let unauthenticatedSocket: WebSocket | undefined;
+    let authenticatedSocket: WebSocket | undefined;
 
     try {
       expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
-      const unauthenticatedSocket = await openWebSocket(server.controlUrl);
+      unauthenticatedSocket = await openWebSocket(server.controlUrl);
       unauthenticatedSocket.send(encodeFrame({ type: "register" }));
       await expect(nextClose(unauthenticatedSocket)).resolves.toEqual({
         code: 1008,
         reason: "Invalid tunnel token",
       });
 
-      const authenticatedSocket = await openWebSocket(server.controlUrl);
+      authenticatedSocket = await openWebSocket(server.controlUrl);
       authenticatedSocket.send(encodeFrame({ type: "register", token }));
-      await expect(nextMessage(authenticatedSocket)).resolves.toEqual({
+      await expect(nextMessage(authenticatedSocket)).resolves.toMatchObject({
+        subdomain: expect.stringMatching(/^px-/),
         type: "registered",
       });
-      authenticatedSocket.close();
     } finally {
+      unauthenticatedSocket?.close();
+      authenticatedSocket?.close();
       await server.close();
     }
   });

@@ -160,8 +160,11 @@ describe("runtime assembly", () => {
     let observedConfig:
       | {
           readonly localPort: number;
+          readonly route?:
+            | { readonly type: "auto" }
+            | { readonly type: "root" }
+            | { readonly type: "subdomain"; readonly subdomain: string };
           readonly serverUrl: string;
-          readonly subdomain?: string;
           readonly logger?: RuntimeLogger;
           readonly token?: string;
         }
@@ -170,8 +173,8 @@ describe("runtime assembly", () => {
     const runPromise = runHttpClient(
       {
         localPort: 3000,
+        route: { type: "subdomain", subdomain: "demo" },
         serverUrl: "ws://proxy.example.com:8080/__proxer__/control",
-        subdomain: "demo",
         token: "dev-token",
       },
       {
@@ -180,7 +183,10 @@ describe("runtime assembly", () => {
         async startHttpTunnelClient(config) {
           observedConfig = config;
           return {
-            subdomain: config.subdomain,
+            subdomain:
+              config.route?.type === "subdomain"
+                ? config.route.subdomain
+                : undefined,
             async close() {
               closed.push("client");
             },
@@ -193,8 +199,8 @@ describe("runtime assembly", () => {
 
     expect(observedConfig).toEqual({
       localPort: 3000,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: "ws://proxy.example.com:8080/__proxer__/control",
-      subdomain: "demo",
       logger,
       token: "dev-token",
     });
@@ -217,12 +223,45 @@ describe("runtime assembly", () => {
     expect(logger.messages).toContain("http tunnel stopped");
   });
 
-  it("logs root-domain routing for an HTTP tunnel without a subdomain", async () => {
+  it("logs an auto-assigned subdomain returned by the HTTP tunnel client", async () => {
     const logger = createLogger();
     const process = createSignalTarget();
     const runPromise = runHttpClient(
       {
         localPort: 3000,
+        route: { type: "auto" },
+        serverUrl: "ws://proxy.example.com:8080/__proxer__/control",
+      },
+      {
+        logger,
+        process,
+        async startHttpTunnelClient() {
+          return {
+            subdomain: "px-auto",
+            async close() {},
+          };
+        },
+      },
+    );
+
+    await Promise.resolve();
+
+    expect(logger.messages).toContain("subdomain: px-auto");
+    expect(logger.messages).toContain(
+      "public: http://px-auto.proxy.example.com:8080",
+    );
+
+    process.emit("SIGTERM");
+    await runPromise;
+  });
+
+  it("logs root-domain routing for an HTTP tunnel root route", async () => {
+    const logger = createLogger();
+    const process = createSignalTarget();
+    const runPromise = runHttpClient(
+      {
+        localPort: 3000,
+        route: { type: "root" },
         serverUrl: "ws://127.0.0.1:8080/__proxer__/control",
       },
       {
@@ -230,7 +269,10 @@ describe("runtime assembly", () => {
         process,
         async startHttpTunnelClient(config) {
           return {
-            subdomain: config.subdomain,
+            subdomain:
+              config.route?.type === "subdomain"
+                ? config.route.subdomain
+                : undefined,
             async close() {},
           };
         },
@@ -251,9 +293,9 @@ describe("runtime assembly", () => {
     const runPromise = runHttpClient(
       {
         localPort: 3000,
+        route: { type: "subdomain", subdomain: "demo" },
         serverUrl:
           "wss://proxy.example.com/__proxer__/control?token=secret-token&state=ok",
-        subdomain: "demo",
         token: "manual-token",
       },
       {
@@ -261,7 +303,10 @@ describe("runtime assembly", () => {
         process,
         async startHttpTunnelClient(config) {
           return {
-            subdomain: config.subdomain,
+            subdomain:
+              config.route?.type === "subdomain"
+                ? config.route.subdomain
+                : undefined,
             async close() {},
           };
         },

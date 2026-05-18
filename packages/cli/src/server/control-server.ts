@@ -5,15 +5,25 @@ import { ProxerError } from "#app/lib/error.ts";
 import { formatRoutePrefix, type RuntimeLogger } from "#app/lib/logging.ts";
 import { secureCompare } from "#app/lib/secure-compare.ts";
 import type { RegisterFrame } from "#app/protocol/frame.ts";
+import { isTunnelSubdomain } from "#app/protocol/subdomain.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
+import {
+  generateRandomSubdomain,
+  type RandomSubdomainGenerator,
+} from "#app/server/random-subdomain.ts";
 import type { TunnelRoute } from "#app/server/route-target.ts";
-import type { TunnelRegistry } from "#app/server/stream-registry.ts";
+import {
+  DuplicateTunnelRouteError,
+  type TunnelRegistry,
+} from "#app/server/stream-registry.ts";
 
 export type ControlServerOptions = {
   readonly address?: HostPort;
   readonly logger?: RuntimeLogger;
+  readonly generateSubdomain?: RandomSubdomainGenerator;
   readonly maxPayloadBytes?: number;
   readonly registry: TunnelRegistry;
+  readonly randomSubdomainMaxAttempts?: number;
   readonly registerTimeoutMs?: number;
   readonly token?: string;
 };
@@ -56,6 +66,7 @@ const isRegisterFrame = (frame: {
 
 const DEFAULT_REGISTER_TIMEOUT_MS = 7_500;
 const DEFAULT_MAX_PAYLOAD_BYTES = 1024 * 1024;
+const DEFAULT_RANDOM_SUBDOMAIN_MAX_ATTEMPTS = 10;
 
 const routeName = (route: TunnelRoute): string => route.type;
 
@@ -63,9 +74,37 @@ const duplicateReason = (route: TunnelRoute): string => {
   return route.type === "root" ? "duplicate-root" : "duplicate-subdomain";
 };
 
+const resolveRequestedRoute = (
+  frame: RegisterFrame,
+): TunnelRoute | undefined => {
+  if (frame.root === true) {
+    return { type: "root" };
+  }
+
+  if (frame.subdomain) {
+    return { type: "subdomain", subdomain: frame.subdomain };
+  }
+
+  return undefined;
+};
+
+const isDuplicateSubdomainError = (
+  route: TunnelRoute,
+  error: unknown,
+): boolean => {
+  return (
+    route.type === "subdomain" &&
+    error instanceof DuplicateTunnelRouteError &&
+    error.route.type === "subdomain" &&
+    error.route.subdomain === route.subdomain
+  );
+};
+
 export const createControlWebSocketServer = ({
+  generateSubdomain = generateRandomSubdomain,
   logger,
   maxPayloadBytes = DEFAULT_MAX_PAYLOAD_BYTES,
+  randomSubdomainMaxAttempts = DEFAULT_RANDOM_SUBDOMAIN_MAX_ATTEMPTS,
   registry,
   registerTimeoutMs = DEFAULT_REGISTER_TIMEOUT_MS,
   token,
@@ -106,21 +145,64 @@ export const createControlWebSocketServer = ({
         return;
       }
 
-      const route: TunnelRoute = frame.subdomain
-        ? { type: "subdomain", subdomain: frame.subdomain }
-        : { type: "root" };
+      const requestedRoute = resolveRequestedRoute(frame);
+      let route = requestedRoute;
 
       try {
-        registry.register({
-          ...(frame.basicAuth ? { basicAuth: frame.basicAuth } : {}),
-          connection,
-          route,
-        });
+        if (route) {
+          registry.register({
+            ...(frame.basicAuth ? { basicAuth: frame.basicAuth } : {}),
+            connection,
+            route,
+          });
+        } else {
+          for (
+            let attempt = 0;
+            attempt < randomSubdomainMaxAttempts;
+            attempt += 1
+          ) {
+            const generatedRoute: TunnelRoute = {
+              type: "subdomain",
+              subdomain: generateSubdomain(),
+            };
+            if (!isTunnelSubdomain(generatedRoute.subdomain)) {
+              continue;
+            }
+
+            try {
+              registry.register({
+                ...(frame.basicAuth ? { basicAuth: frame.basicAuth } : {}),
+                connection,
+                route: generatedRoute,
+              });
+              route = generatedRoute;
+              break;
+            } catch (error) {
+              if (isDuplicateSubdomainError(generatedRoute, error)) {
+                continue;
+              }
+
+              throw error;
+            }
+          }
+
+          if (!route) {
+            throw new ProxerError(
+              "Could not allocate a random tunnel subdomain",
+            );
+          }
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logger?.info(
-          `${formatRoutePrefix(route)} client rejected reason=${duplicateReason(route)} remote=${remoteAddress}`,
-        );
+        if (route) {
+          logger?.info(
+            `${formatRoutePrefix(route)} client rejected reason=${duplicateReason(route)} remote=${remoteAddress}`,
+          );
+        } else {
+          logger?.info(
+            `client rejected reason=random-subdomain-unavailable remote=${remoteAddress}`,
+          );
+        }
         void connection
           .send({ type: "error", streamId: "registration", message })
           .finally(() => connection.close(1008, message));
@@ -157,8 +239,10 @@ export const createControlWebSocketServer = ({
 
 export const startControlServer = async ({
   address,
+  generateSubdomain,
   logger,
   maxPayloadBytes,
+  randomSubdomainMaxAttempts,
   registry,
   registerTimeoutMs,
   token,
@@ -167,8 +251,10 @@ export const startControlServer = async ({
 }): Promise<ControlServerHandle> => {
   const server = http.createServer();
   const webSocketServer = createControlWebSocketServer({
+    generateSubdomain,
     logger,
     maxPayloadBytes,
+    randomSubdomainMaxAttempts,
     registry,
     registerTimeoutMs,
     token,

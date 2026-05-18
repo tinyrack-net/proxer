@@ -19,7 +19,7 @@ There is no `--control-path` option. Clients receive a base URL such as `wss://p
 
 ## Control connection
 
-`proxer http` opens a WebSocket connection to `/__proxer__/control`. After token authentication, it registers either the root route or a single subdomain route.
+`proxer http` opens a WebSocket connection to `/__proxer__/control`. After token authentication, it registers a chosen subdomain route, an explicit root route, or asks the server to assign a random subdomain.
 
 When a public request arrives, the server creates a tunnel stream and sends request frames over that existing control connection. The client turns those frames into a request to `127.0.0.1:<port>`, then sends response headers and body chunks back on the same stream.
 
@@ -38,7 +38,7 @@ HTTP streaming and Server-Sent Events are forwarded as chunks, not buffered as o
 
 ## Reconnect behavior
 
-If an established control connection drops, the client cleans up active streams and tries to reconnect. When the server is reachable at the same URL, the client authenticates and registers again.
+If an established control connection drops, the client cleans up active streams and tries to reconnect. When the server is reachable at the same URL, the client authenticates and registers again. Auto-assigned subdomains stay stable across reconnects during the same client run.
 
 Initial startup is stricter. If you start the client while the server is unavailable, the command may fail before the reconnect loop exists. Start the server first.
 

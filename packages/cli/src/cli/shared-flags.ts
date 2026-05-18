@@ -15,6 +15,14 @@ export const parseHttpSubdomain = (input: string): string => {
   return subdomain;
 };
 
+const parseHttpSubdomainFlag = (input: string): string => {
+  if (input.trim() === "@") {
+    return "@";
+  }
+
+  return parseHttpSubdomain(input);
+};
+
 export const parseToken = (input: string): string => {
   const token = input.trim();
   if (!token) {
@@ -75,8 +83,9 @@ export const serverDomainFlag = {
 
 export const httpSubdomainFlag = {
   kind: "parsed" as const,
-  parse: parseHttpSubdomain,
-  brief: "Subdomain used for host routing.",
+  parse: parseHttpSubdomainFlag,
+  brief:
+    "Subdomain for host routing; omit for random, or use @ for root when the server has --domain.",
   placeholder: "subdomain",
   optional: true as const,
 };

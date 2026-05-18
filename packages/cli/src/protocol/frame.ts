@@ -9,6 +9,7 @@ export type BasicAuthConfig = {
 
 export type RegisterFrame = {
   readonly type: "register";
+  readonly root?: true;
   readonly subdomain?: string;
   readonly token?: string;
   readonly basicAuth?: BasicAuthConfig;
@@ -112,6 +113,7 @@ const isBase64 = (value: unknown): value is string => {
 
 type CandidateFrame = {
   readonly type?: unknown;
+  readonly root?: unknown;
   readonly subdomain?: unknown;
   readonly token?: unknown;
   readonly basicAuth?: unknown;
@@ -154,6 +156,8 @@ export const isTunnelFrame = (value: unknown): value is TunnelFrame => {
     case "register":
       return (
         !hasRemovedNameField &&
+        (frame.root === undefined || frame.root === true) &&
+        !(frame.root === true && frame.subdomain !== undefined) &&
         (frame.subdomain === undefined || isTunnelSubdomain(frame.subdomain)) &&
         hasOptionalString(frame.token) &&
         (frame.basicAuth === undefined || isBasicAuthConfig(frame.basicAuth))

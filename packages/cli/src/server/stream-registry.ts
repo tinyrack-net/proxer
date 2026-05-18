@@ -13,13 +13,23 @@ export type RegisteredTunnel = {
   readonly basicAuth?: TunnelBasicAuth;
 };
 
+export class DuplicateTunnelRouteError extends ProxerError {
+  readonly route: TunnelRoute;
+
+  constructor(route: TunnelRoute, message = duplicateRouteMessage(route)) {
+    super(message);
+    this.name = "DuplicateTunnelRouteError";
+    this.route = route;
+  }
+}
+
 export class TunnelRegistry {
   readonly #tunnels = new Map<string, RegisteredTunnel>();
 
   register(tunnel: RegisteredTunnel): void {
     const key = tunnelRouteKey(tunnel.route);
     if (this.#tunnels.has(key)) {
-      throw new ProxerError(duplicateRouteMessage(tunnel.route));
+      throw new DuplicateTunnelRouteError(tunnel.route);
     }
 
     this.#tunnels.set(key, tunnel);

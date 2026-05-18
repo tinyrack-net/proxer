@@ -15,7 +15,7 @@ proxer http 3000 --server wss://your-server.example.com --subdomain demo --token
 
 - `<port>`: local HTTP port to forward to. This positional argument has no environment variable.
 - `--server <url>`: Proxer server base URL. Accepted schemes are `ws://`, `wss://`, `http://`, and `https://`; HTTP schemes are converted to WebSocket schemes internally. Do not include a path, query, or fragment.
-- `--subdomain <name>`: register a subdomain route. Omit it to register the root route.
+- `--subdomain <name>`: register a chosen subdomain route. Omit it to let the server assign a random subdomain. Use `--subdomain @` to register the root route intentionally when the server has a configured `--domain`.
 - `--token <token>`: shared token matching the server.
 - `--basic-auth-password <password>`: require Basic Auth for public HTTP, SSE, and WebSocket access to this tunnel.
 - `--basic-auth-username <username>`: optional Basic Auth username. If omitted, only the password is checked.
@@ -37,7 +37,7 @@ CLI flags take precedence over environment variables.
 Password-only mode:
 
 ```bash
-PROXER_BASIC_AUTH_PASSWORD='secret' proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
+PROXER_BASIC_AUTH_PASSWORD='secret' proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
 Username and password mode:
@@ -52,13 +52,21 @@ Use environment variables or secret stores for real deployments. `--basic-auth-p
 
 ## Routes
 
-Root route:
+Auto-assigned subdomain route:
 
 ```bash
 proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
-Requests for `proxy.example.com` are sent to the local service.
+The server assigns a random subdomain such as `px-k7m3q9t2ab`, the client prints the public URL, and reconnects during the same run keep using that assigned subdomain.
+
+Root route:
+
+```bash
+proxer http 3000 --server wss://proxy.example.com --subdomain @ --token dev-token
+```
+
+Requests for `proxy.example.com` are sent to the local service. Root routing is intended for servers started with `--domain`; without one, Proxer derives routes from the first host label.
 
 Subdomain route:
 
@@ -72,4 +80,4 @@ Subdomains are lowercased and must be a single DNS label: letters, numbers, and 
 
 ## Reconnect behavior
 
-If an established control connection drops, the client retries and registers again when the server is reachable. If the initial connection fails before registration, the command may exit.
+If an established control connection drops, the client retries and registers again when the server is reachable. Auto-assigned subdomains stay stable across reconnects during the same client run. If the initial connection fails before registration, the command may exit.

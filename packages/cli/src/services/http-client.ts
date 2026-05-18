@@ -9,6 +9,11 @@ import {
 } from "#app/lib/logging.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
 
+export type HttpClientRouteRequest =
+  | { readonly type: "auto" }
+  | { readonly type: "root" }
+  | { readonly type: "subdomain"; readonly subdomain: string };
+
 export type HttpClientConfig = {
   readonly basicAuth?: {
     readonly password: string;
@@ -16,7 +21,7 @@ export type HttpClientConfig = {
   };
   readonly localPort: number;
   readonly serverUrl: string;
-  readonly subdomain?: string;
+  readonly route?: HttpClientRouteRequest;
   readonly token?: string;
   readonly heartbeatIntervalMs?: number;
   readonly heartbeatTimeoutMs?: number;
@@ -25,6 +30,10 @@ export type HttpClientConfig = {
 };
 
 type HttpClientBasicAuth = NonNullable<HttpClientConfig["basicAuth"]>;
+
+type RegisteredRoute =
+  | { readonly type: "root" }
+  | { readonly type: "subdomain"; readonly subdomain: string };
 
 export type RunningTunnelClient = {
   readonly subdomain?: string;
@@ -50,38 +59,84 @@ const silentLogger: RuntimeLogger = {
   error() {},
 };
 
-const formatRouteName = (subdomain?: string): string => subdomain ?? "root";
+const formatRouteName = (
+  route: HttpClientRouteRequest | RegisteredRoute,
+): string => {
+  if (route.type === "subdomain") {
+    return route.subdomain;
+  }
+
+  return route.type;
+};
+
+const buildRegisterRouteFields = (
+  route: HttpClientRouteRequest,
+): { readonly root?: true; readonly subdomain?: string } => {
+  if (route.type === "root") {
+    return { root: true };
+  }
+
+  if (route.type === "subdomain") {
+    return { subdomain: route.subdomain };
+  }
+
+  return {};
+};
+
+const resolveRegisteredRoute = (
+  frameSubdomain: string | undefined,
+  requestedRoute: HttpClientRouteRequest,
+): RegisteredRoute => {
+  if (requestedRoute.type === "auto") {
+    if (frameSubdomain) {
+      return { type: "subdomain", subdomain: frameSubdomain };
+    }
+
+    throw new ProxerError('Registered unexpected tunnel "root"');
+  }
+
+  if (requestedRoute.type === "root") {
+    if (frameSubdomain === undefined) {
+      return { type: "root" };
+    }
+
+    throw new ProxerError(`Registered unexpected tunnel "${frameSubdomain}"`);
+  }
+
+  if (frameSubdomain === requestedRoute.subdomain) {
+    return { type: "subdomain", subdomain: frameSubdomain };
+  }
+
+  throw new ProxerError(
+    `Registered unexpected tunnel "${frameSubdomain ?? "root"}"`,
+  );
+};
 
 const registerConnection = async ({
   basicAuth,
   connection,
-  subdomain,
+  route,
   socket,
   token,
 }: {
   readonly basicAuth?: HttpClientBasicAuth;
   readonly connection: ReturnType<typeof createWebSocketTunnelConnection>;
-  readonly subdomain?: string;
+  readonly route: HttpClientRouteRequest;
   readonly socket: WebSocket;
   readonly token?: string;
-}): Promise<void> => {
+}): Promise<RegisteredRoute> => {
   let removeRegistrationFrameListener: () => void = () => {};
   let removeRegistrationCloseListener: () => void = () => {};
 
   try {
-    await new Promise<void>((resolve, reject) => {
+    return await new Promise<RegisteredRoute>((resolve, reject) => {
       removeRegistrationFrameListener = connection.onFrame((frame) => {
-        if (frame.type === "registered" && frame.subdomain === subdomain) {
-          resolve();
-          return;
-        }
-
         if (frame.type === "registered") {
-          reject(
-            new ProxerError(
-              `Registered unexpected tunnel "${frame.subdomain ?? "root"}"`,
-            ),
-          );
+          try {
+            resolve(resolveRegisteredRoute(frame.subdomain, route));
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
           return;
         }
 
@@ -96,7 +151,7 @@ const registerConnection = async ({
         .send({
           type: "register",
           ...(basicAuth ? { basicAuth } : {}),
-          ...(subdomain ? { subdomain } : {}),
+          ...buildRegisterRouteFields(route),
           token,
         })
         .catch((error: unknown) => {
@@ -168,6 +223,7 @@ type ActiveTunnelConnection = {
   readonly detachLocalHttpForwarder: () => void;
   readonly detachLocalWebSocketForwarder: () => void;
   removeLifecycleCloseListener: () => void;
+  readonly route: RegisteredRoute;
   readonly socket: WebSocket;
   readonly stopHeartbeat: () => void;
 };
@@ -179,8 +235,8 @@ export const startHttpTunnelClient = async ({
   localPort,
   logger = silentLogger,
   reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
+  route = { type: "auto" },
   serverUrl,
-  subdomain,
   token,
 }: HttpClientConfig): Promise<RunningTunnelClient> => {
   const tunnelToken = token?.trim();
@@ -188,9 +244,8 @@ export const startHttpTunnelClient = async ({
     throw new ProxerError("token is required");
   }
   const logServerUrl = sanitizeLogUrl(serverUrl);
-  const route: LogRoute = subdomain
-    ? { type: "subdomain", subdomain }
-    : { type: "root" };
+  let routeRequest = route;
+  let activeRoute: RegisteredRoute | undefined;
 
   let activeConnection: ActiveTunnelConnection | undefined;
   let closing = false;
@@ -210,30 +265,38 @@ export const startHttpTunnelClient = async ({
 
   const connect = async (): Promise<ActiveTunnelConnection> => {
     logger.info(
-      `connecting server=${logServerUrl} route=${formatRouteName(subdomain)}`,
+      `connecting server=${logServerUrl} route=${formatRouteName(routeRequest)}`,
     );
     const socket = await openWebSocket(serverUrl);
     logger.info(`connected server=${logServerUrl}`);
     const connection = createWebSocketTunnelConnection(socket);
-    await registerConnection({
+    const registeredRoute = await registerConnection({
       basicAuth,
       connection,
+      route: routeRequest,
       socket,
-      subdomain,
       token: tunnelToken,
     });
-    logger.info(`registered route=${formatRouteName(subdomain)}`);
+    activeRoute = registeredRoute;
+    if (routeRequest.type === "auto" && registeredRoute.type === "subdomain") {
+      routeRequest = {
+        type: "subdomain",
+        subdomain: registeredRoute.subdomain,
+      };
+    }
+    logger.info(`registered route=${formatRouteName(registeredRoute)}`);
+    const logRoute: LogRoute = registeredRoute;
     const detachLocalHttpForwarder = attachLocalHttpForwarder({
       connection,
       localPort,
       logger,
-      route,
+      route: logRoute,
     });
     const detachLocalWebSocketForwarder = attachLocalWebSocketForwarder({
       connection,
       localPort,
       logger,
-      route,
+      route: logRoute,
     });
     const stopHeartbeat = startHeartbeat({
       intervalMs: heartbeatIntervalMs,
@@ -245,6 +308,7 @@ export const startHttpTunnelClient = async ({
       detachLocalHttpForwarder,
       detachLocalWebSocketForwarder,
       removeLifecycleCloseListener: () => {},
+      route: registeredRoute,
       socket,
       stopHeartbeat,
     };
@@ -257,7 +321,7 @@ export const startHttpTunnelClient = async ({
         return;
       }
 
-      logger.info(`disconnected route=${formatRouteName(subdomain)}`);
+      logger.info(`disconnected route=${formatRouteName(active.route)}`);
       cleanupActiveConnection();
       scheduleReconnect();
     });
@@ -271,7 +335,7 @@ export const startHttpTunnelClient = async ({
     try {
       const nextConnection = await connect();
       activateConnection(nextConnection);
-      logger.info(`reconnected route=${formatRouteName(subdomain)}`);
+      logger.info(`reconnected route=${formatRouteName(nextConnection.route)}`);
       if (closing) {
         const staleConnection = nextConnection;
         cleanupActiveConnection();
@@ -297,7 +361,8 @@ export const startHttpTunnelClient = async ({
   activateConnection(await connect());
 
   return {
-    subdomain,
+    subdomain:
+      activeRoute?.type === "subdomain" ? activeRoute.subdomain : undefined,
     async close() {
       closing = true;
       if (reconnectTimer !== undefined) {

@@ -192,6 +192,173 @@ describe("HTTP tunnel client reliability", () => {
     }
   });
 
+  it("resolves with an auto-assigned subdomain from registration", async () => {
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    let registerFrame: TunnelFrame | undefined;
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        registerFrame = decodeFrame(rawDataToBuffer(data));
+        socket.send(encodeFrame({ type: "registered", subdomain: "px-auto" }));
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: 1,
+      reconnectDelayMs: 10,
+      route: { type: "auto" },
+      serverUrl: `ws://${address.host}:${address.port}`,
+      token: "secret",
+    });
+    cleanups.push(() => client.close());
+
+    expect(client.subdomain).toBe("px-auto");
+    expect(registerFrame).toEqual({ type: "register", token: "secret" });
+  });
+
+  it("reuses an auto-assigned subdomain when reconnecting", async () => {
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    const registerFrames: TunnelFrame[] = [];
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        const frame = decodeFrame(rawDataToBuffer(data));
+        registerFrames.push(frame);
+        socket.send(encodeFrame({ type: "registered", subdomain: "px-auto" }));
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: 1,
+      reconnectDelayMs: 10,
+      route: { type: "auto" },
+      serverUrl: `ws://${address.host}:${address.port}`,
+      token: "secret",
+    });
+    cleanups.push(() => client.close());
+    const [firstClient] = webSocketServer.clients;
+    firstClient?.close(1011, "drop");
+
+    await waitFor(
+      () => registerFrames.length >= 2,
+      "expected reconnect registration",
+    );
+
+    expect(registerFrames[0]).toEqual({ type: "register", token: "secret" });
+    expect(registerFrames[1]).toEqual({
+      subdomain: "px-auto",
+      token: "secret",
+      type: "register",
+    });
+  });
+
+  it("sends root registration frames for root route requests", async () => {
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    let registerFrame: TunnelFrame | undefined;
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        registerFrame = decodeFrame(rawDataToBuffer(data));
+        socket.send(encodeFrame({ type: "registered" }));
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: 1,
+      reconnectDelayMs: 10,
+      route: { type: "root" },
+      serverUrl: `ws://${address.host}:${address.port}`,
+      token: "secret",
+    });
+    cleanups.push(() => client.close());
+
+    expect(client.subdomain).toBeUndefined();
+    expect(registerFrame).toEqual({
+      root: true,
+      type: "register",
+      token: "secret",
+    });
+  });
+
+  it("rejects a mismatched explicit subdomain registration", async () => {
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", () => {
+        socket.send(encodeFrame({ type: "registered", subdomain: "other" }));
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+
+    await expect(
+      startHttpTunnelClient({
+        heartbeatIntervalMs: 0,
+        localPort: 1,
+        reconnectDelayMs: 10,
+        route: { type: "subdomain", subdomain: "demo" },
+        serverUrl: `ws://${address.host}:${address.port}`,
+        token: "secret",
+      }),
+    ).rejects.toThrow('Registered unexpected tunnel "other"');
+  });
+
   it("sends heartbeat pings after registration", async () => {
     const server = http.createServer();
     const webSocketServer = new WebSocketServer({ server });
@@ -225,8 +392,8 @@ describe("HTTP tunnel client reliability", () => {
       heartbeatIntervalMs: 10,
       localPort: 1,
       reconnectDelayMs: 10,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: `ws://${address.host}:${address.port}`,
-      subdomain: "demo",
       token: "secret",
     });
     cleanups.push(() => client.close());
@@ -275,8 +442,8 @@ describe("HTTP tunnel client reliability", () => {
       heartbeatIntervalMs: 0,
       localPort: 1,
       reconnectDelayMs: 10,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: `ws://${address.host}:${address.port}`,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => client.close());
@@ -323,8 +490,8 @@ describe("HTTP tunnel client reliability", () => {
       localPort: 1,
       logger,
       reconnectDelayMs: 10,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl,
-      subdomain: "demo",
       token: "secret-token",
     });
     cleanups.push(() => client.close());
@@ -371,8 +538,8 @@ describe("HTTP tunnel client reliability", () => {
       localPort: localAddress.port,
       logger,
       reconnectDelayMs: 10,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: controlServer.url,
-      subdomain: "demo",
       token: "secret-token",
     });
     cleanups.push(() => client.close());
@@ -428,8 +595,8 @@ describe("HTTP tunnel client reliability", () => {
       localPort: localServer.port,
       logger,
       reconnectDelayMs: 10,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: controlServer.url,
-      subdomain: "demo",
       token: "secret",
     });
     cleanups.push(() => client.close());
@@ -484,8 +651,8 @@ describe("HTTP tunnel client reliability", () => {
       heartbeatIntervalMs: 0,
       localPort: localServer.port,
       reconnectDelayMs: 10,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: controlServer.url,
-      subdomain: "demo",
       token: "secret",
     });
     cleanups.push(() => client.close());
@@ -550,8 +717,8 @@ describe("HTTP tunnel client reliability", () => {
       heartbeatIntervalMs: 0,
       localPort: localServer.port,
       reconnectDelayMs: 100,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: controlServer.url,
-      subdomain: "demo",
       token: "secret",
     });
     cleanups.push(() => client.close());
@@ -588,8 +755,8 @@ describe("HTTP tunnel client reliability", () => {
         heartbeatIntervalMs: 0,
         localPort: 1,
         reconnectDelayMs: 10,
+        route: { type: "subdomain", subdomain: "demo" },
         serverUrl: "ws://127.0.0.1:1",
-        subdomain: "demo",
       }),
     ).rejects.toThrow("token is required");
   });

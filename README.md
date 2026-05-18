@@ -65,7 +65,7 @@ Start something local on the client machine:
 python3 -m http.server 3000 --bind 127.0.0.1
 ```
 
-Register the root-domain route:
+Register a tunnel. By default, the server assigns a random subdomain and the client keeps using that assigned name while it reconnects during this run:
 
 ```bash
 proxer http 3000 \
@@ -73,10 +73,17 @@ proxer http 3000 \
   --token dev-token
 ```
 
-Requests for the root host go to that client:
+Example output:
+
+```text
+subdomain: px-k7m3q9t2ab
+public: https://px-k7m3q9t2ab.your-server.example.com
+```
+
+Requests for that assigned host go to the client:
 
 ```bash
-curl https://your-server.example.com/
+curl https://px-k7m3q9t2ab.your-server.example.com/
 ```
 
 Register a named subdomain route instead:
@@ -93,6 +100,17 @@ Then request the matching host:
 ```bash
 curl https://demo.your-server.example.com/
 ```
+
+Request the root-domain route only when you intend to occupy the root host:
+
+```bash
+proxer http 3000 \
+  --server wss://your-server.example.com \
+  --subdomain @ \
+  --token dev-token
+```
+
+Then requests for `https://your-server.example.com/` go to that client. Root routing is intended for servers started with `--domain`; without a configured domain, Proxer derives routes from the first host label, so `--subdomain @` usually will not match the host you expect.
 
 `dev-token` is only a demo value. For a real deployment, set a long random token with `PROXER_TOKEN`, a container secret, a Kubernetes secret, or your platform's secret manager. CLI arguments can land in shell history and process lists.
 
@@ -159,12 +177,14 @@ If the server token is omitted, Proxer prints the generated token as `token: ...
 | CLI flag | Environment variable | Default |
 | --- | --- | --- |
 | `--server <url>` | `PROXER_SERVER` | `ws://127.0.0.1:8080` |
-| `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | unset |
+| `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | auto-assigned random subdomain |
 | `--token <token>` | `PROXER_TOKEN` | required |
 | `--basic-auth-password <password>` | `PROXER_BASIC_AUTH_PASSWORD` | unset |
 | `--basic-auth-username <username>` | `PROXER_BASIC_AUTH_USERNAME` | unset |
 
 The local port is positional and has no environment variable.
+
+Omitting `--subdomain` and `PROXER_SUBDOMAIN` asks the server to assign a random subdomain such as `px-k7m3q9t2ab`. Use `--subdomain demo` or `PROXER_SUBDOMAIN=demo` for a chosen stable name. Use `--subdomain @` or `PROXER_SUBDOMAIN=@` only when you intentionally want root-domain routing on a server configured with `--domain`. Basic Auth can be combined with any route mode, including auto-assigned subdomains.
 
 `--basic-auth-password` protects public HTTP, SSE, and WebSocket access to that tunnel. If `--basic-auth-username` is omitted, any Basic Auth username is accepted and only the password is checked. If a username is set, both username and password must match. These credentials protect public access to the proxied site; `--token` or `PROXER_TOKEN` is still required for tunnel registration.
 
@@ -208,9 +228,9 @@ Reserved paths:
 Clients should pass only the server base URL, such as `wss://proxy.example.com`; Proxer appends `/__proxer__/control` internally. Paths under `/__proxer__/` are never proxied to your app.
 
 ```text
-HTTP request for demo.proxy.example.com
+HTTP request for px-k7m3q9t2ab.proxy.example.com
   -> public Proxer server
-  -> matching tunnel registered as --subdomain demo
+  -> matching tunnel registered with the assigned subdomain
   -> client forwards to 127.0.0.1:<port>
   -> response returns over the same tunnel stream
 ```
@@ -239,17 +259,36 @@ Terminal 3:
 proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
 ```
 
-Call it with the host Proxer expects:
+Call the named demo route with the matching host:
 
 ```bash
 curl -H 'Host: demo.proxy.localhost' http://127.0.0.1:8080/
+```
+
+Omit `--subdomain` to let Proxer assign one:
+
+```bash
+proxer http 3000 --server ws://127.0.0.1:8080 --token dev-token
+```
+
+The client prints the assigned public URL:
+
+```text
+subdomain: px-k7m3q9t2ab
+public: http://px-k7m3q9t2ab.proxy.localhost:8080
+```
+
+Call it with the host Proxer expects:
+
+```bash
+curl -H 'Host: px-k7m3q9t2ab.proxy.localhost' http://127.0.0.1:8080/
 ```
 
 Protect public access to a tunnel with Basic Auth:
 
 ```bash
 PROXER_BASIC_AUTH_PASSWORD='secret' \
-  proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+  proxer http 3000 --server ws://127.0.0.1:8080 --token dev-token
 ```
 
 Require a username and password:

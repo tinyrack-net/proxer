@@ -72,9 +72,9 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
    python3 -m http.server 3000 --bind 127.0.0.1
    ```
 
-3. **ルート経路を登録する**
+3. **自動サブドメイン経路を登録する**
 
-   ルートホストをこのクライアントへ送る場合は、`--subdomain`を省略します。
+   `--subdomain`を省略すると、サーバーがランダムなサブドメインを割り当てます。
 
    ```bash
    proxer http 3000 \
@@ -82,10 +82,12 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
      --token dev-token
    ```
 
-4. **ルートホストを呼ぶ**
+4. **割り当てられたホストを呼ぶ**
+
+   クライアントが表示した`subdomain: px-...`とpublic URLを使います。
 
    ```bash
-   curl https://your-server.example.com/
+   curl https://px-k7m3q9t2ab.your-server.example.com/
    ```
 
 5. **サブドメイン経路を登録する**
@@ -104,6 +106,8 @@ import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components";
    ```bash
    curl https://demo.your-server.example.com/
    ```
+
+   ルートホストが必要な場合だけ`--subdomain @`を使ってください。このモードは、サーバーを`--domain`付きで起動している場合に最も分かりやすく動きます。
 
 </Steps>
 

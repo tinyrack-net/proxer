@@ -72,9 +72,9 @@ The public `wss://` and `https://` examples assume TLS terminates in front of Pr
    python3 -m http.server 3000 --bind 127.0.0.1
    ```
 
-3. **Register the root route**
+3. **Register an auto-assigned route**
 
-   Omit `--subdomain` when you want the root host to reach this client:
+   Omit `--subdomain` when you want Proxer to assign a random subdomain:
 
    ```bash
    proxer http 3000 \
@@ -82,10 +82,12 @@ The public `wss://` and `https://` examples assume TLS terminates in front of Pr
      --token dev-token
    ```
 
-4. **Call the root host**
+4. **Call the assigned host**
+
+   The client prints a `subdomain: px-...` line and the full public URL. Use that host:
 
    ```bash
-   curl https://your-server.example.com/
+   curl https://px-k7m3q9t2ab.your-server.example.com/
    ```
 
 5. **Register a subdomain route**
@@ -104,6 +106,8 @@ The public `wss://` and `https://` examples assume TLS terminates in front of Pr
    ```bash
    curl https://demo.your-server.example.com/
    ```
+
+   Use `--subdomain @` only when you intentionally want the root host itself to reach the client. This is intended for servers started with `--domain`.
 
 </Steps>
 

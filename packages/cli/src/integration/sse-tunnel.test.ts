@@ -17,7 +17,7 @@ const basic = (value: string): string => {
 const requestSse = (
   url: string,
   pathname = "/events",
-  options: { readonly authorization?: string } = {},
+  options: { readonly authorization?: string; readonly host?: string } = {},
 ): {
   readonly firstChunk: Promise<string>;
   readonly fullResponse: Promise<{
@@ -45,7 +45,7 @@ const requestSse = (
           ...(options.authorization
             ? { authorization: options.authorization }
             : {}),
-          host: "demo.localhost",
+          host: options.host ?? "demo.localhost",
         },
       },
       (response) => {
@@ -124,8 +124,8 @@ describe("SSE tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localSseServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -142,6 +142,28 @@ describe("SSE tunnel integration", () => {
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toBe("text/event-stream");
     expect(response.body).toBe("data: one\n\ndata: two\n\n");
+  });
+
+  it("streams SSE chunks through an auto-assigned subdomain", async () => {
+    const localSseServer = await createLocalSseServer();
+    cleanups.push(() => localSseServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localSseServer.port,
+      serverUrl: proxerServer.controlUrl,
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+    const stream = requestSse(proxerServer.publicUrl, "/events", {
+      host: `${tunnelClient.subdomain}.localhost`,
+    });
+
+    await expect(stream.firstChunk).resolves.toBe("data: one\n\n");
+    await expect(stream.fullResponse).resolves.toMatchObject({ status: 200 });
   });
 
   it("requires public basic auth before forwarding SSE requests", async () => {
@@ -164,8 +186,8 @@ describe("SSE tunnel integration", () => {
     const tunnelClient = await startHttpTunnelClient({
       basicAuth: { password: "site-secret" },
       localPort: localSseServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -240,8 +262,8 @@ describe("SSE tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localAddress.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -292,8 +314,8 @@ describe("SSE tunnel integration", () => {
     const oldTunnelClient = await startHttpTunnelClient({
       localPort: oldLocalSseServer.port,
       reconnectDelayMs: 60_000,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => oldTunnelClient.close());
@@ -314,8 +336,8 @@ describe("SSE tunnel integration", () => {
     cleanups.push(() => newLocalSseServer.close());
     const newTunnelClient = await startHttpTunnelClient({
       localPort: newLocalSseServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => newTunnelClient.close());

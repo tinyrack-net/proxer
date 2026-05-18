@@ -15,7 +15,7 @@ proxer http 3000 --server wss://your-server.example.com --subdomain demo --token
 
 - `<port>`: 転送先のローカルHTTPポートです。このpositional引数に環境変数はありません。
 - `--server <url>`: Proxerサーバーのbase URLです。`ws://`、`wss://`、`http://`、`https://`を使えます。HTTP schemeは内部でWebSocket schemeへ変換されます。path、query、fragmentは含めないでください。
-- `--subdomain <name>`: サブドメイン経路を登録します。省略するとルート経路を登録します。
+- `--subdomain <name>`: 指定したサブドメイン経路を登録します。省略するとサーバーがランダムなサブドメインを割り当てます。ルート経路が必要で、サーバーに`--domain`が設定されている場合だけ`--subdomain @`を使ってください。
 - `--token <token>`: サーバーと一致する共有トークンです。
 - `--basic-auth-password <password>`: このトンネルの公開HTTP、SSE、WebSocketアクセスにBasic Authを要求します。
 - `--basic-auth-username <username>`: 任意のBasic Authユーザー名です。省略するとパスワードだけを確認します。
@@ -37,7 +37,7 @@ CLI flagは環境変数より優先されます。
 パスワードのみのモード:
 
 ```bash
-PROXER_BASIC_AUTH_PASSWORD='secret' proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
+PROXER_BASIC_AUTH_PASSWORD='secret' proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
 ユーザー名とパスワードを要求するモード:
@@ -52,13 +52,21 @@ PROXER_BASIC_AUTH_PASSWORD='secret' \
 
 ## 経路
 
-ルート経路:
+自動割り当てサブドメイン経路:
 
 ```bash
 proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
-`proxy.example.com`へのリクエストはローカルサービスへ転送されます。
+サーバーは`px-k7m3q9t2ab`のようなランダムなサブドメインを割り当て、クライアントはpublic URLを表示します。同じ実行中の再接続では、その割り当て済みサブドメインを使い続けます。
+
+ルート経路:
+
+```bash
+proxer http 3000 --server wss://proxy.example.com --subdomain @ --token dev-token
+```
+
+`proxy.example.com`へのリクエストはローカルサービスへ転送されます。ルート経路は、サーバーを`--domain`付きで起動している場合に最も分かりやすく動きます。`--domain`がない場合、Proxerはリクエストホストの最初のlabelをサブドメイン経路として扱います。
 
 サブドメイン経路:
 
@@ -72,4 +80,4 @@ proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-t
 
 ## 再接続
 
-確立済みの制御接続が切れた場合、クライアントは再試行し、サーバーに届くと再登録します。初回接続が登録前に失敗した場合、コマンドは終了することがあります。
+確立済みの制御接続が切れた場合、クライアントは再試行し、サーバーに届くと再登録します。自動割り当てされたサブドメインは、同じクライアント実行中の再接続後も維持されます。初回接続が登録前に失敗した場合、コマンドは終了することがあります。

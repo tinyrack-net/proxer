@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { ProxerError } from "#app/lib/error.ts";
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
-import { TunnelRegistry } from "#app/server/stream-registry.ts";
+import {
+  DuplicateTunnelRouteError,
+  TunnelRegistry,
+} from "#app/server/stream-registry.ts";
 
 const createConnection = (): TunnelConnection => ({
   async send(_frame: TunnelFrame) {},
@@ -53,6 +56,17 @@ describe("TunnelRegistry", () => {
     expect(() =>
       registry.register({ route, connection: createConnection() }),
     ).toThrow('Tunnel subdomain "demo" is already registered');
+  });
+
+  it("rejects duplicate active routes with a typed duplicate route error", () => {
+    const registry = new TunnelRegistry();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
+
+    registry.register({ route, connection: createConnection() });
+
+    expect(() =>
+      registry.register({ route, connection: createConnection() }),
+    ).toThrow(DuplicateTunnelRouteError);
   });
 
   it("rejects duplicate root routes", () => {

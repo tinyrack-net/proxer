@@ -117,8 +117,8 @@ describe("WebSocket tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localWebSocketServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -154,6 +154,46 @@ describe("WebSocket tunnel integration", () => {
     await localConnectionClosed;
   });
 
+  it("opens websocket tunnels through an auto-assigned subdomain", async () => {
+    const localWebSocketServer = await createLocalWebSocketEchoServer();
+    cleanups.push(() => localWebSocketServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      localPort: localWebSocketServer.port,
+      serverUrl: proxerServer.controlUrl,
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+    const publicWebSocketUrl = proxerServer.publicUrl.replace(
+      "http://",
+      "ws://",
+    );
+    const publicSocket = await openWebSocket(`${publicWebSocketUrl}/echo`, {
+      host: `${tunnelClient.subdomain}.localhost`,
+    });
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve) => {
+          if (publicSocket.readyState === WebSocket.CLOSED) {
+            resolve();
+            return;
+          }
+          publicSocket.once("close", () => resolve());
+          publicSocket.close();
+        }),
+    );
+
+    publicSocket.send("hello-auto");
+    const message = await waitForMessage(publicSocket);
+
+    expect(message.isBinary).toBe(false);
+    expect(message.data.toString("utf8")).toBe("hello-auto");
+  });
+
   it("requires public basic auth before opening websocket tunnels", async () => {
     const localWebSocketServer = await createLocalWebSocketEchoServer();
     cleanups.push(() => localWebSocketServer.close());
@@ -165,8 +205,8 @@ describe("WebSocket tunnel integration", () => {
     const tunnelClient = await startHttpTunnelClient({
       basicAuth: { password: "site-secret" },
       localPort: localWebSocketServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -209,8 +249,8 @@ describe("WebSocket tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localWebSocketServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -286,8 +326,8 @@ describe("WebSocket tunnel integration", () => {
     cleanups.push(() => proxerServer.close());
     const tunnelClient = await startHttpTunnelClient({
       localPort: localWebSocketServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => tunnelClient.close());
@@ -327,8 +367,8 @@ describe("WebSocket tunnel integration", () => {
     const oldTunnelClient = await startHttpTunnelClient({
       localPort: oldLocalWebSocketServer.port,
       reconnectDelayMs: 60_000,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => oldTunnelClient.close());
@@ -360,8 +400,8 @@ describe("WebSocket tunnel integration", () => {
     cleanups.push(() => newLocalWebSocketServer.close());
     const newTunnelClient = await startHttpTunnelClient({
       localPort: newLocalWebSocketServer.port,
+      route: { type: "subdomain", subdomain: "demo" },
       serverUrl: proxerServer.controlUrl,
-      subdomain: "demo",
       token: "dev-token",
     });
     cleanups.push(() => newTunnelClient.close());

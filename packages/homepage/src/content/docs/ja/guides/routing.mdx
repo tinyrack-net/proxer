@@ -13,13 +13,21 @@ Proxerはホスト名でルーティングします。普通の話に見えま�
 proxer server --listen 0.0.0.0:8080 --domain proxy.example.com --token dev-token
 ```
 
-`--subdomain`なしのクライアントはルート経路を登録します。
+`--subdomain`なしのクライアントには、サーバーがランダムなサブドメインを割り当てます。
 
 ```bash
 proxer http 3000 --server wss://proxy.example.com --token dev-token
 ```
 
-`proxy.example.com`へのリクエストはこのクライアントへ行きます。
+クライアントは`https://px-k7m3q9t2ab.proxy.example.com`のようなpublic URLを表示します。同じ実行中の再接続では、この割り当てを使い続けます。
+
+ルート経路が必要な場合だけ`--subdomain @`を使います。
+
+```bash
+proxer http 3000 --server wss://proxy.example.com --subdomain @ --token dev-token
+```
+
+`proxy.example.com`へのリクエストは、このルート経路のクライアントへ行きます。ルート経路は、サーバーを`--domain`付きで起動している場合に最も分かりやすく動きます。`--domain`がない場合、Proxerはリクエストホストの最初のlabelをサブドメイン経路として扱います。
 
 `--subdomain demo`を指定したクライアントは`demo.proxy.example.com`を登録します。
 

@@ -69,7 +69,7 @@ Options:
 
 - \`<port>\`: local HTTP port to expose. It is positional and has no environment variable.
 - \`--server <url>\`: Proxer server base URL. Accepted schemes are \`ws://\`, \`wss://\`, \`http://\`, and \`https://\`; HTTP schemes are converted to WebSocket schemes internally. Do not include a path, query, or fragment.
-- \`--subdomain <subdomain>\`: register a subdomain route. Omit it to register the root-domain route.
+- \`--subdomain <subdomain>\`: register a chosen subdomain route. Omit it to let the server assign a random subdomain. Use \`--subdomain @\` only when you intentionally want root-domain routing on a server configured with \`--domain\`.
 - \`--token <token>\`: shared token matching the server.
 
 Environment variables:
@@ -111,7 +111,8 @@ Proxer routes public requests by Host header.
 
 With \`proxer server --domain proxy.example.com\`:
 
-- A client without \`--subdomain\` registers the root route. Requests for \`proxy.example.com\` go to that client.
+- A client without \`--subdomain\` gets a server-assigned random subdomain such as \`px-k7m3q9t2ab\`. The client keeps using that assigned subdomain across reconnects during the same run.
+- A client with \`--subdomain @\` registers the root route. Requests for \`proxy.example.com\` go to that client. Root routing is intended for servers started with \`--domain\`; without one, Proxer derives routes from the first host label.
 - A client with \`--subdomain demo\` registers \`demo.proxy.example.com\`. Requests for that host go to that client.
 - Requests for unregistered subdomains return 404.
 - Direct \`localhost\` or IP-based Host requests are not automatically routed to a connected client.
@@ -155,7 +156,6 @@ Client command shape through the public TLS endpoint:
 
 \`\`\`bash
 PROXER_SERVER=wss://proxy.example.com \\
-PROXER_SUBDOMAIN=demo \\
 PROXER_TOKEN="$PROXER_TOKEN" \\
 proxer http 3000
 \`\`\`
@@ -222,6 +222,8 @@ proxer http 3000 \\
 \`\`\`
 
 Then route public traffic to \`https://demo.proxy.example.com/\`.
+
+Omit \`--subdomain\` to use an auto-assigned route, or pass \`--subdomain @\` when the root host itself should route to the client and the server has \`--domain\` configured.
 
 ### Docker Server
 

@@ -16,7 +16,7 @@ Proxerは、公開エンドポイントを自分で持つためのリバース�
 
 ## ルーティングは推測しません
 
-`--domain proxy.example.com`を設定した場合、`--subdomain`なしのクライアントは`proxy.example.com`を担当します。`--subdomain demo`を指定したクライアントは`demo.proxy.example.com`を担当します。
+`--domain proxy.example.com`を設定した場合、`--subdomain`なしのクライアントには`px-k7m3q9t2ab.proxy.example.com`のようなランダムなサブドメインが割り当てられます。`--subdomain demo`を指定したクライアントは`demo.proxy.example.com`を、`--subdomain @`を指定したクライアントはルートホスト`proxy.example.com`を担当します。
 
 入ってきたホストが登録済み経路と合わない場合、Proxerは`404`を返します。接続中のクライアントが1つだけでも、そこへ勝手に送りません。少し不便に見えますが、複数のトンネルで同じサーバーを使うときに挙動が読みやすくなります。
 

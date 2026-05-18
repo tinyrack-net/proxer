@@ -16,7 +16,7 @@ Proxer는 공개 엔드포인트를 직접 운영하는 리버스 터널입니�
 
 ## 라우팅은 추측하지 않습니다
 
-`--domain proxy.example.com`을 설정하면, `--subdomain`이 없는 클라이언트는 `proxy.example.com`을 처리합니다. `--subdomain demo`를 지정한 클라이언트는 `demo.proxy.example.com`을 처리합니다.
+`--domain proxy.example.com`을 설정하면, `--subdomain`이 없는 클라이언트는 `px-k7m3q9t2ab.proxy.example.com` 같은 임의 서브도메인을 받습니다. `--subdomain demo`를 지정한 클라이언트는 `demo.proxy.example.com`을 처리하고, `--subdomain @`를 지정한 클라이언트는 루트 호스트 `proxy.example.com`을 처리합니다.
 
 들어온 호스트가 등록된 경로와 맞지 않으면 Proxer는 `404`를 반환합니다. 연결된 클라이언트가 하나뿐이어도 거기로 보내지 않습니다. 덜 똑똑해 보일 수 있지만, 여러 터널이 서버 하나를 공유할 때 훨씬 예측하기 쉽습니다.
 
