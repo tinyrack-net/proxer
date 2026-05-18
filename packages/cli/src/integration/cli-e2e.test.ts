@@ -2,7 +2,12 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import http from "node:http";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { listenOnRandomPort } from "#app/test/local-servers.ts";
+import { WebSocket } from "ws";
+import {
+  createLocalSseServer,
+  createLocalWebSocketEchoServer,
+  listenOnRandomPort,
+} from "#app/test/local-servers.ts";
 
 type SpawnedCli = {
   readonly child: ChildProcessWithoutNullStreams;
@@ -195,6 +200,101 @@ const requestPublic = async (
   });
 };
 
+const requestPublicSse = (
+  publicUrl: string,
+): {
+  readonly firstChunk: Promise<string>;
+  readonly fullResponse: Promise<{
+    readonly body: string;
+    readonly headers: http.IncomingHttpHeaders;
+    readonly status: number;
+  }>;
+} => {
+  let resolveFirstChunk: (chunk: string) => void = () => {};
+  let rejectFirstChunk: (error: Error) => void = () => {};
+  const firstChunk = new Promise<string>((resolveChunk, reject) => {
+    resolveFirstChunk = resolveChunk;
+    rejectFirstChunk = reject;
+  });
+  const fullResponse = new Promise<{
+    body: string;
+    headers: http.IncomingHttpHeaders;
+    status: number;
+  }>((resolveResponse, reject) => {
+    const request = http.request(
+      new URL("/events", publicUrl),
+      { headers: { host: "demo.proxy.localhost" } },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.once("data", (chunk: Buffer) => {
+          resolveFirstChunk(Buffer.from(chunk).toString("utf8"));
+        });
+        response.on("data", (chunk: Buffer) => {
+          chunks.push(Buffer.from(chunk));
+        });
+        response.on("end", () => {
+          resolveResponse({
+            body: Buffer.concat(chunks).toString("utf8"),
+            headers: response.headers,
+            status: response.statusCode ?? 0,
+          });
+        });
+        response.on("error", reject);
+      },
+    );
+    request.on("error", (error) => {
+      rejectFirstChunk(error);
+      reject(error);
+    });
+    request.end();
+  });
+
+  return { firstChunk, fullResponse };
+};
+
+const openPublicWebSocket = async (publicUrl: string): Promise<WebSocket> => {
+  const publicWebSocketUrl = publicUrl.replace("http://", "ws://");
+  const socket = new WebSocket(`${publicWebSocketUrl}/echo`, {
+    headers: { host: "demo.proxy.localhost" },
+  });
+
+  await new Promise<void>((resolveOpen, reject) => {
+    socket.once("open", resolveOpen);
+    socket.once("error", reject);
+  });
+
+  return socket;
+};
+
+const waitForMessage = async (
+  socket: WebSocket,
+): Promise<{ readonly data: Buffer; readonly isBinary: boolean }> => {
+  return await new Promise((resolveMessage, reject) => {
+    socket.once("message", (data, isBinary) => {
+      resolveMessage({ data: Buffer.from(data as Buffer), isBinary });
+    });
+    socket.once("error", reject);
+  });
+};
+
+const closeWebSocket = async (socket: WebSocket): Promise<void> => {
+  if (socket.readyState === WebSocket.CLOSED) {
+    return;
+  }
+
+  await new Promise<void>((resolveClose) => {
+    const timer = setTimeout(() => {
+      socket.terminate();
+      resolveClose();
+    }, 1_000);
+    socket.once("close", () => {
+      clearTimeout(timer);
+      resolveClose();
+    });
+    socket.close();
+  });
+};
+
 describe("CLI E2E", () => {
   const cleanups: Array<() => Promise<void>> = [];
 
@@ -247,5 +347,119 @@ describe("CLI E2E", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("cli-e2e:GET:/\n");
+  });
+
+  it("proxies SSE through real built CLI server and client processes without buffering", async () => {
+    let localResponseEnded = false;
+    let secondEventWritten = false;
+    const localServer = await createLocalSseServer({
+      onResponseEnded() {
+        localResponseEnded = true;
+      },
+      onSecondEventWritten() {
+        secondEventWritten = true;
+      },
+    });
+    cleanups.push(() => localServer.close());
+    const serverPort = await getFreePort();
+
+    const serverProcess = spawnCli([
+      "server",
+      "--listen",
+      `127.0.0.1:${serverPort}`,
+      "--domain",
+      "proxy.localhost",
+      "--token",
+      "e2e-token",
+    ]);
+    cleanups.push(() => stopCli(serverProcess));
+    const publicMatch = await waitForOutput(
+      serverProcess,
+      /^public: (http:\/\/127\.0\.0\.1:\d+)$/m,
+    );
+    const publicUrl = publicMatch[1];
+    if (!publicUrl) {
+      throw new Error(
+        `CLI did not print a public URL:\n${combinedOutput(serverProcess)}`,
+      );
+    }
+
+    const clientProcess = spawnCli([
+      "http",
+      String(localServer.port),
+      "--server",
+      publicUrl,
+      "--subdomain",
+      "demo",
+      "--token",
+      "e2e-token",
+    ]);
+    cleanups.push(() => stopCli(clientProcess));
+    await waitForOutput(clientProcess, /^subdomain: demo$/m);
+
+    const { firstChunk, fullResponse } = requestPublicSse(publicUrl);
+    const observedFirstChunk = await firstChunk;
+
+    expect(observedFirstChunk).toBe("data: one\n\n");
+    expect(localResponseEnded).toBe(false);
+    expect(secondEventWritten).toBe(false);
+
+    const response = await fullResponse;
+
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("text/event-stream");
+    expect(response.body).toBe("data: one\n\ndata: two\n\n");
+  });
+
+  it("proxies WebSocket text and binary messages through real built CLI server and client processes", async () => {
+    const localServer = await createLocalWebSocketEchoServer();
+    cleanups.push(() => localServer.close());
+    const serverPort = await getFreePort();
+
+    const serverProcess = spawnCli([
+      "server",
+      "--listen",
+      `127.0.0.1:${serverPort}`,
+      "--domain",
+      "proxy.localhost",
+      "--token",
+      "e2e-token",
+    ]);
+    cleanups.push(() => stopCli(serverProcess));
+    const publicMatch = await waitForOutput(
+      serverProcess,
+      /^public: (http:\/\/127\.0\.0\.1:\d+)$/m,
+    );
+    const publicUrl = publicMatch[1];
+    if (!publicUrl) {
+      throw new Error(
+        `CLI did not print a public URL:\n${combinedOutput(serverProcess)}`,
+      );
+    }
+
+    const clientProcess = spawnCli([
+      "http",
+      String(localServer.port),
+      "--server",
+      publicUrl,
+      "--subdomain",
+      "demo",
+      "--token",
+      "e2e-token",
+    ]);
+    cleanups.push(() => stopCli(clientProcess));
+    await waitForOutput(clientProcess, /^subdomain: demo$/m);
+    const publicSocket = await openPublicWebSocket(publicUrl);
+    cleanups.push(() => closeWebSocket(publicSocket));
+
+    publicSocket.send("hello");
+    const textMessage = await waitForMessage(publicSocket);
+    expect(textMessage.isBinary).toBe(false);
+    expect(textMessage.data.toString("utf8")).toBe("hello");
+
+    publicSocket.send(Buffer.from([1, 2, 3]));
+    const binaryMessage = await waitForMessage(publicSocket);
+    expect(binaryMessage.isBinary).toBe(true);
+    expect(binaryMessage.data).toEqual(Buffer.from([1, 2, 3]));
   });
 });

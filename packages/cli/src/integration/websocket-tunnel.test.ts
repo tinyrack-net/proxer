@@ -40,6 +40,26 @@ const waitForClose = async (socket: WebSocket): Promise<void> => {
   });
 };
 
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+};
+
 const createDeterministicBuffer = (size: number): Buffer => {
   const payload = Buffer.allocUnsafe(size);
 
@@ -229,5 +249,74 @@ describe("WebSocket tunnel integration", () => {
 
     expect(response.isBinary).toBe(true);
     expect(response.data).toEqual(payload);
+  });
+
+  it("closes an in-flight public websocket on tunnel disconnect and accepts a new websocket after re-registration", async () => {
+    const oldLocalWebSocketServer = await createLocalWebSocketEchoServer();
+    cleanups.push(() => oldLocalWebSocketServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const oldTunnelClient = await startHttpTunnelClient({
+      localPort: oldLocalWebSocketServer.port,
+      reconnectDelayMs: 60_000,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => oldTunnelClient.close());
+    const publicWebSocketUrl = proxerServer.publicUrl.replace(
+      "http://",
+      "ws://",
+    );
+    const oldPublicSocket = await openWebSocket(`${publicWebSocketUrl}/echo`);
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve) => {
+          if (oldPublicSocket.readyState === WebSocket.CLOSED) {
+            resolve();
+            return;
+          }
+          oldPublicSocket.once("close", () => resolve());
+          oldPublicSocket.close();
+        }),
+    );
+
+    await oldTunnelClient.close();
+    await withTimeout(
+      waitForClose(oldPublicSocket),
+      1_000,
+      "public websocket did not close promptly after tunnel disconnect",
+    );
+
+    const newLocalWebSocketServer = await createLocalWebSocketEchoServer();
+    cleanups.push(() => newLocalWebSocketServer.close());
+    const newTunnelClient = await startHttpTunnelClient({
+      localPort: newLocalWebSocketServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => newTunnelClient.close());
+    const newPublicSocket = await openWebSocket(`${publicWebSocketUrl}/echo`);
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve) => {
+          if (newPublicSocket.readyState === WebSocket.CLOSED) {
+            resolve();
+            return;
+          }
+          newPublicSocket.once("close", () => resolve());
+          newPublicSocket.close();
+        }),
+    );
+
+    newPublicSocket.send("after-reconnect");
+    const response = await waitForMessage(newPublicSocket);
+
+    expect(response.isBinary).toBe(false);
+    expect(response.data.toString("utf8")).toBe("after-reconnect");
   });
 });

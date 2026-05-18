@@ -105,9 +105,12 @@ const createLocalNamedJsonServer = async (
   name: string,
 ): Promise<{
   readonly port: number;
+  readonly requestCount: number;
   close(): Promise<void>;
 }> => {
+  let requestCount = 0;
   const server = http.createServer((request, response) => {
+    requestCount += 1;
     response.writeHead(200, { "content-type": "application/json" });
     response.end(
       JSON.stringify({
@@ -120,7 +123,72 @@ const createLocalNamedJsonServer = async (
 
   return {
     port: address.port,
+    get requestCount() {
+      return requestCount;
+    },
     async close() {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    },
+  };
+};
+
+const createLocalBlockingJsonServer = async (
+  name: string,
+): Promise<{
+  readonly port: number;
+  readonly requestCount: number;
+  readonly requestReceived: Promise<void>;
+  close(): Promise<void>;
+  release(): void;
+}> => {
+  let requestCount = 0;
+  let resolveRequestReceived: () => void = () => {};
+  let releaseResponse: () => void = () => {};
+  const requestReceived = new Promise<void>((resolve) => {
+    resolveRequestReceived = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    releaseResponse = resolve;
+  });
+  const server = http.createServer((request, response) => {
+    requestCount += 1;
+    resolveRequestReceived();
+    void released.then(() => {
+      if (response.destroyed) {
+        return;
+      }
+
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          name,
+          path: request.url,
+        }),
+      );
+    });
+  });
+  const address = await listenOnRandomPort(server);
+
+  return {
+    port: address.port,
+    requestReceived,
+    get requestCount() {
+      return requestCount;
+    },
+    release() {
+      releaseResponse();
+    },
+    async close() {
+      releaseResponse();
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
           if (error) {
@@ -376,6 +444,26 @@ const requestPublicBuffer = async ({
     request.on("error", reject);
     request.end(body);
   });
+};
+
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
 };
 
 describe("HTTP tunnel integration", () => {
@@ -673,5 +761,59 @@ describe("HTTP tunnel integration", () => {
     const response = await requestPublicJson(proxerServer.publicUrl);
 
     expect(response.status).toBe(404);
+  });
+
+  it("fails an in-flight HTTP request on tunnel disconnect and does not replay it after re-registration", async () => {
+    const oldLocalServer = await createLocalBlockingJsonServer("old");
+    cleanups.push(() => oldLocalServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const oldTunnelClient = await startHttpTunnelClient({
+      localPort: oldLocalServer.port,
+      reconnectDelayMs: 60_000,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => oldTunnelClient.close());
+    const inFlightResponse = requestPublicJson(proxerServer.publicUrl, {
+      host: "demo.localhost",
+    });
+    await oldLocalServer.requestReceived;
+
+    await oldTunnelClient.close();
+    const interruptedResponse = await withTimeout(
+      inFlightResponse,
+      1_000,
+      "in-flight HTTP request did not fail promptly after tunnel disconnect",
+    );
+
+    expect(interruptedResponse.status).toBe(502);
+    expect(oldLocalServer.requestCount).toBe(1);
+
+    const newLocalServer = await createLocalNamedJsonServer("new");
+    cleanups.push(() => newLocalServer.close());
+    const newTunnelClient = await startHttpTunnelClient({
+      localPort: newLocalServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => newTunnelClient.close());
+
+    const newResponse = await requestPublicJson(proxerServer.publicUrl, {
+      host: "demo.localhost",
+    });
+
+    expect(newResponse.status).toBe(200);
+    expect(JSON.parse(newResponse.body)).toEqual({
+      name: "new",
+      path: "/api/hello?x=1",
+    });
+    expect(newLocalServer.requestCount).toBe(1);
+    expect(oldLocalServer.requestCount).toBe(1);
   });
 });

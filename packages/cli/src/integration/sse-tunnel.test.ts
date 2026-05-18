@@ -64,6 +64,26 @@ const requestSse = (
   return { firstChunk, fullResponse };
 };
 
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+};
+
 describe("SSE tunnel integration", () => {
   const cleanups: Array<() => Promise<void>> = [];
 
@@ -200,5 +220,54 @@ describe("SSE tunnel integration", () => {
         `data: ${streamId}:one\n\ndata: ${streamId}:two\n\n`,
       );
     }
+  });
+
+  it("ends an in-flight SSE stream on tunnel disconnect and does not replay it after re-registration", async () => {
+    const oldLocalSseServer = await createLocalSseServer({
+      secondEventDelayMs: 10_000,
+    });
+    cleanups.push(() => oldLocalSseServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const oldTunnelClient = await startHttpTunnelClient({
+      localPort: oldLocalSseServer.port,
+      reconnectDelayMs: 60_000,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => oldTunnelClient.close());
+    const { firstChunk, fullResponse } = requestSse(proxerServer.publicUrl);
+
+    await expect(firstChunk).resolves.toBe("data: one\n\n");
+
+    await oldTunnelClient.close();
+    const interruptedBody = await withTimeout(
+      fullResponse.then((response) => response.body).catch(() => undefined),
+      1_000,
+      "in-flight SSE stream did not end promptly after tunnel disconnect",
+    );
+
+    expect(interruptedBody).not.toBe("data: one\n\ndata: two\n\n");
+
+    const newLocalSseServer = await createLocalSseServer();
+    cleanups.push(() => newLocalSseServer.close());
+    const newTunnelClient = await startHttpTunnelClient({
+      localPort: newLocalSseServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => newTunnelClient.close());
+    const newStream = requestSse(proxerServer.publicUrl);
+
+    await expect(newStream.firstChunk).resolves.toBe("data: one\n\n");
+    await expect(newStream.fullResponse).resolves.toMatchObject({
+      body: "data: one\n\ndata: two\n\n",
+      status: 200,
+    });
   });
 });

@@ -27,7 +27,7 @@ const sendResponseFrame = (
   connection: TunnelConnection,
   frame: TunnelFrame,
 ): void => {
-  void connection.send(frame);
+  void connection.send(frame).catch(() => {});
 };
 
 const silentLogger: RuntimeLogger = {
