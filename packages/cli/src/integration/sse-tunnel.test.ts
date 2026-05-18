@@ -10,9 +10,14 @@ import {
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
 
+const basic = (value: string): string => {
+  return `Basic ${Buffer.from(value).toString("base64")}`;
+};
+
 const requestSse = (
   url: string,
   pathname = "/events",
+  options: { readonly authorization?: string } = {},
 ): {
   readonly firstChunk: Promise<string>;
   readonly fullResponse: Promise<{
@@ -35,7 +40,14 @@ const requestSse = (
   }>((resolve, reject) => {
     const request = http.request(
       requestUrl,
-      { headers: { host: "demo.localhost" } },
+      {
+        headers: {
+          ...(options.authorization
+            ? { authorization: options.authorization }
+            : {}),
+          host: "demo.localhost",
+        },
+      },
       (response) => {
         const chunks: Buffer[] = [];
         response.once("data", (chunk: Buffer) => {
@@ -130,6 +142,51 @@ describe("SSE tunnel integration", () => {
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toBe("text/event-stream");
     expect(response.body).toBe("data: one\n\ndata: two\n\n");
+  });
+
+  it("requires public basic auth before forwarding SSE requests", async () => {
+    let localResponseEnded = false;
+    let secondEventWritten = false;
+    const localSseServer = await createLocalSseServer({
+      onResponseEnded() {
+        localResponseEnded = true;
+      },
+      onSecondEventWritten() {
+        secondEventWritten = true;
+      },
+    });
+    cleanups.push(() => localSseServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      basicAuth: { password: "site-secret" },
+      localPort: localSseServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+
+    const missingAuth = requestSse(proxerServer.publicUrl);
+
+    await expect(missingAuth.fullResponse).resolves.toMatchObject({
+      status: 401,
+    });
+    expect(localResponseEnded).toBe(false);
+    expect(secondEventWritten).toBe(false);
+
+    const authorized = requestSse(proxerServer.publicUrl, "/events", {
+      authorization: basic("anything:site-secret"),
+    });
+
+    await expect(authorized.firstChunk).resolves.toBe("data: one\n\n");
+    await expect(authorized.fullResponse).resolves.toMatchObject({
+      body: "data: one\n\ndata: two\n\n",
+      status: 200,
+    });
   });
 
   it("streams concurrent SSE clients independently", async () => {

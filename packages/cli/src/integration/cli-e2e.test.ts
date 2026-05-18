@@ -20,6 +20,10 @@ type SpawnedCli = {
 const packageRoot = resolve(import.meta.dirname, "../..");
 const cliEntrypoint = resolve(packageRoot, "dist/index.js");
 
+const basic = (value: string): string => {
+  return `Basic ${Buffer.from(value).toString("base64")}`;
+};
+
 const closeHttpServer = async (server: http.Server): Promise<void> => {
   await new Promise<void>((resolveClose, reject) => {
     server.close((error) => {
@@ -59,10 +63,13 @@ const getFreePort = async (): Promise<number> => {
   return address.port;
 };
 
-const spawnCli = (args: readonly string[]): SpawnedCli => {
+const spawnCli = (
+  args: readonly string[],
+  options: { readonly env?: NodeJS.ProcessEnv } = {},
+): SpawnedCli => {
   const child = spawn(process.execPath, [cliEntrypoint, ...args], {
     cwd: packageRoot,
-    env: { ...process.env, NO_COLOR: "1" },
+    env: { ...process.env, NO_COLOR: "1", ...options.env },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const output = { stderr: "", stdout: "" };
@@ -173,6 +180,7 @@ const stopCli = async ({ child }: SpawnedCli): Promise<void> => {
 
 const requestPublic = async (
   publicUrl: string,
+  options: { readonly authorization?: string } = {},
 ): Promise<{
   readonly body: string;
   readonly status: number;
@@ -180,7 +188,14 @@ const requestPublic = async (
   return await new Promise((resolveResponse, reject) => {
     const request = http.request(
       new URL("/", publicUrl),
-      { headers: { host: "demo.proxy.localhost" } },
+      {
+        headers: {
+          ...(options.authorization
+            ? { authorization: options.authorization }
+            : {}),
+          host: "demo.proxy.localhost",
+        },
+      },
       (response) => {
         const chunks: Buffer[] = [];
         response.on("data", (chunk: Buffer) => {
@@ -347,6 +362,67 @@ describe("CLI E2E", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("cli-e2e:GET:/\n");
+  });
+
+  it("honors env-based public basic auth in real built CLI client processes", async () => {
+    const localServer = await createLocalHttpServer();
+    cleanups.push(() => localServer.close());
+    const serverPort = await getFreePort();
+
+    const serverProcess = spawnCli([
+      "server",
+      "--listen",
+      `127.0.0.1:${serverPort}`,
+      "--domain",
+      "proxy.localhost",
+      "--token",
+      "e2e-token",
+    ]);
+    cleanups.push(() => stopCli(serverProcess));
+    const publicMatch = await waitForOutput(
+      serverProcess,
+      /^public: (http:\/\/127\.0\.0\.1:\d+)$/m,
+    );
+    const publicUrl = publicMatch[1];
+    if (!publicUrl) {
+      throw new Error(
+        `CLI did not print a public URL:\n${combinedOutput(serverProcess)}`,
+      );
+    }
+
+    const clientProcess = spawnCli(
+      [
+        "http",
+        String(localServer.port),
+        "--server",
+        publicUrl,
+        "--subdomain",
+        "demo",
+        "--token",
+        "e2e-token",
+      ],
+      {
+        env: {
+          PROXER_BASIC_AUTH_PASSWORD: "site-secret",
+          PROXER_BASIC_AUTH_USERNAME: "admin",
+        },
+      },
+    );
+    cleanups.push(() => stopCli(clientProcess));
+    await waitForOutput(clientProcess, /^subdomain: demo$/m);
+
+    const missingAuthResponse = await requestPublic(publicUrl);
+    const wrongUsernameResponse = await requestPublic(publicUrl, {
+      authorization: basic("other:site-secret"),
+    });
+    const authorizedResponse = await requestPublic(publicUrl, {
+      authorization: basic("admin:site-secret"),
+    });
+
+    expect(missingAuthResponse.status).toBe(401);
+    expect(wrongUsernameResponse.status).toBe(401);
+    expect(authorizedResponse.status).toBe(200);
+    expect(authorizedResponse.body).toBe("cli-e2e:GET:/\n");
   });
 
   it("proxies SSE through real built CLI server and client processes without buffering", async () => {

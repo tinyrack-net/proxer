@@ -17,6 +17,8 @@ proxer http 3000 --server wss://your-server.example.com --subdomain demo --token
 - `--server <url>`: Proxer server base URL. Accepted schemes are `ws://`, `wss://`, `http://`, and `https://`; HTTP schemes are converted to WebSocket schemes internally. Do not include a path, query, or fragment.
 - `--subdomain <name>`: register a subdomain route. Omit it to register the root route.
 - `--token <token>`: shared token matching the server.
+- `--basic-auth-password <password>`: require Basic Auth for public HTTP, SSE, and WebSocket access to this tunnel.
+- `--basic-auth-username <username>`: optional Basic Auth username. If omitted, only the password is checked.
 
 `--token` or `PROXER_TOKEN` is required. Without one, the command fails with `token is required`.
 
@@ -25,8 +27,28 @@ proxer http 3000 --server wss://your-server.example.com --subdomain demo --token
 - `PROXER_SERVER`: default value for `--server`.
 - `PROXER_SUBDOMAIN`: default value for `--subdomain`.
 - `PROXER_TOKEN`: default value for `--token`.
+- `PROXER_BASIC_AUTH_PASSWORD`: default value for `--basic-auth-password`.
+- `PROXER_BASIC_AUTH_USERNAME`: default value for `--basic-auth-username`.
 
 CLI flags take precedence over environment variables.
+
+## Public Basic Auth
+
+Password-only mode:
+
+```bash
+PROXER_BASIC_AUTH_PASSWORD='secret' proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
+```
+
+Username and password mode:
+
+```bash
+PROXER_BASIC_AUTH_USERNAME='admin' \
+PROXER_BASIC_AUTH_PASSWORD='secret' \
+  proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
+```
+
+Use environment variables or secret stores for real deployments. `--basic-auth-password` can leak through shell history or process listings. Basic Auth protects public access to the proxied site, not tunnel registration; `--token` or `PROXER_TOKEN` is still required. Use HTTPS/WSS because Basic Auth credentials are sent in request headers.
 
 ## Routes
 

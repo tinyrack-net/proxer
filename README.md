@@ -161,8 +161,14 @@ If the server token is omitted, Proxer prints the generated token as `token: ...
 | `--server <url>` | `PROXER_SERVER` | `ws://127.0.0.1:8080` |
 | `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | unset |
 | `--token <token>` | `PROXER_TOKEN` | required |
+| `--basic-auth-password <password>` | `PROXER_BASIC_AUTH_PASSWORD` | unset |
+| `--basic-auth-username <username>` | `PROXER_BASIC_AUTH_USERNAME` | unset |
 
 The local port is positional and has no environment variable.
+
+`--basic-auth-password` protects public HTTP, SSE, and WebSocket access to that tunnel. If `--basic-auth-username` is omitted, any Basic Auth username is accepted and only the password is checked. If a username is set, both username and password must match. These credentials protect public access to the proxied site; `--token` or `PROXER_TOKEN` is still required for tunnel registration.
+
+Prefer environment variables or secret stores for real deployments. Passing `--basic-auth-password` directly can leak through shell history or process listings, and Basic Auth credentials are sent in request headers, so use HTTPS/WSS in front of Proxer.
 
 `--trusted-proxy` is repeatable:
 
@@ -237,6 +243,21 @@ Call it with the host Proxer expects:
 
 ```bash
 curl -H 'Host: demo.proxy.localhost' http://127.0.0.1:8080/
+```
+
+Protect public access to a tunnel with Basic Auth:
+
+```bash
+PROXER_BASIC_AUTH_PASSWORD='secret' \
+  proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+```
+
+Require a username and password:
+
+```bash
+PROXER_BASIC_AUTH_USERNAME='admin' \
+PROXER_BASIC_AUTH_PASSWORD='secret' \
+  proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
 ```
 
 ### Server-Sent Events

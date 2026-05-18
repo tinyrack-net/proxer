@@ -26,6 +26,21 @@ describe("TunnelRegistry", () => {
     expect(registry.get(route)).toEqual({ route, connection });
   });
 
+  it("stores basic auth requirements with a registered tunnel", () => {
+    const registry = new TunnelRegistry();
+    const connection = createConnection();
+
+    registry.register({
+      basicAuth: { password: "secret", username: "admin" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+
+    expect(
+      registry.get({ type: "subdomain", subdomain: "demo" })?.basicAuth,
+    ).toEqual({ password: "secret", username: "admin" });
+  });
+
   it("rejects duplicate active subdomain routes", () => {
     const registry = new TunnelRegistry();
     const route = { type: "subdomain", subdomain: "demo" } as const;

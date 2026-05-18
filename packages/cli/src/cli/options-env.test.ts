@@ -176,6 +176,35 @@ describe("CLI PROXER_ environment options", () => {
     });
   });
 
+  it("uses an HTTP basic auth password from the environment", async () => {
+    await runCli(
+      ["http", "3000"],
+      createCapturedProcess({
+        PROXER_BASIC_AUTH_PASSWORD: "site-secret",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      basicAuth: { password: "site-secret" },
+    });
+  });
+
+  it("uses HTTP basic auth username and password from the environment", async () => {
+    await runCli(
+      ["http", "3000"],
+      createCapturedProcess({
+        PROXER_BASIC_AUTH_PASSWORD: "site-secret",
+        PROXER_BASIC_AUTH_USERNAME: "admin",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      basicAuth: { password: "site-secret", username: "admin" },
+    });
+  });
+
   it("prefers HTTP client flags over environment options", async () => {
     await runCli(
       [
@@ -202,6 +231,53 @@ describe("CLI PROXER_ environment options", () => {
       subdomain: "flag",
       token: "flag-secret",
     });
+  });
+
+  it("prefers HTTP basic auth flags over environment options", async () => {
+    await runCli(
+      [
+        "http",
+        "3000",
+        "--basic-auth-username",
+        "flag-user",
+        "--basic-auth-password",
+        "flag-pass",
+      ],
+      createCapturedProcess({
+        PROXER_BASIC_AUTH_PASSWORD: "env-pass",
+        PROXER_BASIC_AUTH_USERNAME: "env-user",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      basicAuth: { password: "flag-pass", username: "flag-user" },
+    });
+  });
+
+  it("rejects an HTTP basic auth username without a password", async () => {
+    const process = createCapturedProcess({
+      PROXER_BASIC_AUTH_USERNAME: "admin",
+      PROXER_TOKEN: "secret",
+    });
+
+    await runCli(["http", "3000"], process);
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
+    expect(process.result().stderr).toContain(
+      "basic auth password is required when username is set",
+    );
+  });
+
+  it("rejects an empty HTTP basic auth password flag", async () => {
+    const process = createCapturedProcess({ PROXER_TOKEN: "secret" });
+
+    await runCli(["http", "3000", "--basic-auth-password", "   "], process);
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
+    expect(process.result().stderr).toContain(
+      "basic auth password must not be empty",
+    );
   });
 
   it.each([

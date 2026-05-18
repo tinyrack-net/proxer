@@ -2,9 +2,15 @@ import { ProxerError } from "#app/lib/error.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import { type TunnelRoute, tunnelRouteKey } from "#app/server/route-target.ts";
 
+export type TunnelBasicAuth = {
+  readonly password: string;
+  readonly username?: string;
+};
+
 export type RegisteredTunnel = {
   readonly route: TunnelRoute;
   readonly connection: TunnelConnection;
+  readonly basicAuth?: TunnelBasicAuth;
 };
 
 export class TunnelRegistry {

@@ -9,6 +9,11 @@ import { TunnelRegistry } from "#app/server/stream-registry.ts";
 import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
+const AUTHORIZATION_HEADER = "authorization";
+
+const basic = (value: string): string => {
+  return `Basic ${Buffer.from(value).toString("base64")}`;
+};
 
 const createLogger = (): RuntimeLogger & { readonly messages: string[] } => {
   const messages: string[] = [];
@@ -389,6 +394,188 @@ describe("public HTTP server", () => {
       body: "created",
       status: 201,
     });
+  });
+
+  it("rejects missing basic auth for a password-protected tunnel", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      basicAuth: { password: "secret" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const response = await requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers["www-authenticate"]).toBe('Basic realm="proxer"');
+    expect(connection.sent).toEqual([]);
+  });
+
+  it("accepts any basic auth username in password-only mode", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      basicAuth: { password: "secret" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: {
+        authorization: basic("anything:secret"),
+        host: "demo.localhost",
+      },
+      url: handle.url,
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+
+    expect(openFrame).toMatchObject({ type: "open" });
+    if (openFrame.type !== "open") {
+      throw new Error("expected open frame");
+    }
+    expect(openFrame.headers).not.toHaveProperty("authorization");
+    connection.emitFrame({
+      headers: {},
+      status: 200,
+      streamId: openFrame.streamId,
+      type: "headers",
+    });
+    connection.emitFrame({
+      direction: "response",
+      streamId: openFrame.streamId,
+      type: "end",
+    });
+
+    await expect(responsePromise).resolves.toMatchObject({ status: 200 });
+  });
+
+  it("rejects a wrong configured basic auth username", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      basicAuth: { password: "secret", username: "admin" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const response = await requestPublic({
+      headers: {
+        authorization: basic("other:secret"),
+        host: "demo.localhost",
+      },
+      url: handle.url,
+    });
+
+    expect(response.status).toBe(401);
+    expect(connection.sent).toEqual([]);
+  });
+
+  it("accepts a matching configured basic auth username", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      basicAuth: { password: "secret", username: "admin" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: {
+        authorization: basic("admin:secret"),
+        host: "demo.localhost",
+      },
+      url: handle.url,
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+
+    if (openFrame.type !== "open") {
+      throw new Error("expected open frame");
+    }
+    expect(openFrame.headers).not.toHaveProperty("authorization");
+    connection.emitFrame({
+      headers: {},
+      status: 204,
+      streamId: openFrame.streamId,
+      type: "headers",
+    });
+    connection.emitFrame({
+      direction: "response",
+      streamId: openFrame.streamId,
+      type: "end",
+    });
+
+    await expect(responsePromise).resolves.toMatchObject({ status: 204 });
+  });
+
+  it("preserves authorization for unprotected HTTP tunnels", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: {
+        authorization: "Bearer app-token",
+        host: "demo.localhost",
+      },
+      url: handle.url,
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+
+    if (openFrame.type !== "open") {
+      throw new Error("expected open frame");
+    }
+    expect(openFrame.headers[AUTHORIZATION_HEADER]).toBe("Bearer app-token");
+    connection.emitFrame({
+      headers: {},
+      status: 204,
+      streamId: openFrame.streamId,
+      type: "headers",
+    });
+    connection.emitFrame({
+      direction: "response",
+      streamId: openFrame.streamId,
+      type: "end",
+    });
+
+    await expect(responsePromise).resolves.toMatchObject({ status: 204 });
   });
 
   it("logs a safe proxied HTTP access summary", async () => {

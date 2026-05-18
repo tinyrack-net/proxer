@@ -9,6 +9,11 @@ import { TunnelRegistry } from "#app/server/stream-registry.ts";
 import { parseTrustedProxyValues } from "#app/server/trusted-proxies.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
+const AUTHORIZATION_HEADER = "authorization";
+
+const basic = (value: string): string => {
+  return `Basic ${Buffer.from(value).toString("base64")}`;
+};
 
 const createLogger = (): RuntimeLogger & { readonly messages: string[] } => {
   const messages: string[] = [];
@@ -219,6 +224,156 @@ describe("public WebSocket upgrade tunneling", () => {
     );
 
     expect(requestDataFrame).toMatchObject({ streamId: openFrame.streamId });
+  });
+
+  it("rejects missing basic auth for a protected websocket tunnel", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      basicAuth: { password: "secret" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(handle.url);
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+    const response = await rawClient.waitForData();
+
+    expect(response.toString("utf8")).toContain("401 Unauthorized");
+    expect(response.toString("utf8")).toContain(
+      'www-authenticate: Basic realm="proxer"',
+    );
+    expect(connection.sent).toEqual([]);
+  });
+
+  it("accepts any basic auth username for password-only websocket tunnels", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      basicAuth: { password: "secret" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(
+      handle.url,
+      "demo.localhost",
+      `Authorization: ${basic("anything:secret")}\r\n`,
+    );
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+
+    if (openFrame.type !== "open") {
+      throw new Error("expected websocket open frame");
+    }
+    expect(openFrame.headers).not.toHaveProperty("authorization");
+  });
+
+  it("rejects a wrong configured basic auth username for websocket tunnels", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      basicAuth: { password: "secret", username: "admin" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(
+      handle.url,
+      "demo.localhost",
+      `Authorization: ${basic("other:secret")}\r\n`,
+    );
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+    const response = await rawClient.waitForData();
+
+    expect(response.toString("utf8")).toContain("401 Unauthorized");
+    expect(connection.sent).toEqual([]);
+  });
+
+  it("strips authorization for successful protected websocket tunnels", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      basicAuth: { password: "secret", username: "admin" },
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(
+      handle.url,
+      "demo.localhost",
+      `Authorization: ${basic("admin:secret")}\r\n`,
+    );
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+
+    if (openFrame.type !== "open") {
+      throw new Error("expected websocket open frame");
+    }
+    expect(openFrame.headers).not.toHaveProperty("authorization");
+  });
+
+  it("preserves authorization for unprotected websocket tunnels", async () => {
+    const registry = new TunnelRegistry();
+    const connection = new FakeTunnelConnection();
+    registry.register({
+      connection,
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const rawClient = await connectRawUpgrade(
+      handle.url,
+      "demo.localhost",
+      "Authorization: Bearer app-token\r\n",
+    );
+    cleanups.push(() => {
+      rawClient.socket.destroy();
+    });
+    const openFrame = await connection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+
+    if (openFrame.type !== "open") {
+      throw new Error("expected websocket open frame");
+    }
+    expect(openFrame.headers[AUTHORIZATION_HEADER]).toBe("Bearer app-token");
   });
 
   it("logs safe websocket open and close summaries", async () => {

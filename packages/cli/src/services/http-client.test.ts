@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type RawData, WebSocketServer } from "ws";
 import type { HostPort } from "#app/lib/address.ts";
 import type { RuntimeLogger } from "#app/lib/logging.ts";
+import type { TunnelFrame } from "#app/protocol/frame.ts";
 import { decodeFrame, encodeFrame } from "#app/protocol/frame-codec.ts";
 import { startControlServer } from "#app/server/control-server.ts";
 import { startPublicHttpServer } from "#app/server/public-http-server.ts";
@@ -233,6 +234,59 @@ describe("HTTP tunnel client reliability", () => {
     await waitFor(() => pings > 0, "expected heartbeat ping");
 
     expect(pings).toBeGreaterThan(0);
+  });
+
+  it("sends basic auth requirements in the registration frame", async () => {
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    let registerFrame: TunnelFrame | undefined;
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        const frame = decodeFrame(rawDataToBuffer(data));
+        if (frame.type !== "register") {
+          return;
+        }
+
+        registerFrame = frame;
+        socket.send(
+          encodeFrame({
+            type: "registered",
+            ...(frame.subdomain ? { subdomain: frame.subdomain } : {}),
+          }),
+        );
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+    const client = await startHttpTunnelClient({
+      basicAuth: { password: "site-secret", username: "admin" },
+      heartbeatIntervalMs: 0,
+      localPort: 1,
+      reconnectDelayMs: 10,
+      serverUrl: `ws://${address.host}:${address.port}`,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => client.close());
+
+    expect(registerFrame).toEqual({
+      basicAuth: { password: "site-secret", username: "admin" },
+      subdomain: "demo",
+      token: "dev-token",
+      type: "register",
+    });
   });
 
   it("logs connection lifecycle without leaking the token", async () => {

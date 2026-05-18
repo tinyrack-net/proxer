@@ -17,6 +17,8 @@ proxer http 3000 --server wss://your-server.example.com --subdomain demo --token
 - `--server <url>`: Proxerサーバーのbase URLです。`ws://`、`wss://`、`http://`、`https://`を使えます。HTTP schemeは内部でWebSocket schemeへ変換されます。path、query、fragmentは含めないでください。
 - `--subdomain <name>`: サブドメイン経路を登録します。省略するとルート経路を登録します。
 - `--token <token>`: サーバーと一致する共有トークンです。
+- `--basic-auth-password <password>`: このトンネルの公開HTTP、SSE、WebSocketアクセスにBasic Authを要求します。
+- `--basic-auth-username <username>`: 任意のBasic Authユーザー名です。省略するとパスワードだけを確認します。
 
 `--token`または`PROXER_TOKEN`は必須です。ない場合は`token is required`で終了します。
 
@@ -25,8 +27,28 @@ proxer http 3000 --server wss://your-server.example.com --subdomain demo --token
 - `PROXER_SERVER`: `--server`のデフォルト値。
 - `PROXER_SUBDOMAIN`: `--subdomain`のデフォルト値。
 - `PROXER_TOKEN`: `--token`のデフォルト値。
+- `PROXER_BASIC_AUTH_PASSWORD`: `--basic-auth-password`のデフォルト値。
+- `PROXER_BASIC_AUTH_USERNAME`: `--basic-auth-username`のデフォルト値。
 
 CLI flagは環境変数より優先されます。
+
+## 公開Basic Auth
+
+パスワードのみのモード:
+
+```bash
+PROXER_BASIC_AUTH_PASSWORD='secret' proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
+```
+
+ユーザー名とパスワードを要求するモード:
+
+```bash
+PROXER_BASIC_AUTH_USERNAME='admin' \
+PROXER_BASIC_AUTH_PASSWORD='secret' \
+  proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
+```
+
+実運用では環境変数やsecret storeを使ってください。`--basic-auth-password`はshell historyやprocess listに残る可能性があります。Basic Authはproxied siteへの公開アクセスを保護するもので、トンネル登録には引き続き`--token`または`PROXER_TOKEN`が必要です。Basic Auth credentialはrequest headerで送信されるため、HTTPS/WSSを使ってください。
 
 ## 経路
 

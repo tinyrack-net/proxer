@@ -13,6 +13,10 @@ import {
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import {
+  verifyBasicAuthHeader,
+  writeBasicAuthUpgradeChallenge,
+} from "#app/server/basic-auth.ts";
+import {
   getRequestContext,
   type RequestContext,
 } from "#app/server/request-context.ts";
@@ -35,6 +39,8 @@ export type WebSocketUpgradeHandlerOptions = {
   readonly streamTimeoutMs?: number;
   readonly trustedProxies?: TrustedProxyConfig;
 };
+
+const AUTHORIZATION_HEADER = "authorization";
 
 const getHostValue = (host: string | string[] | undefined): string => {
   const hostValue = Array.isArray(host) ? host[0] : host;
@@ -84,6 +90,7 @@ const proxyWebSocketUpgrade = ({
   request,
   route,
   socket,
+  stripAuthorizationHeader,
   streamTimeoutMs,
 }: {
   readonly connection: TunnelConnection;
@@ -93,6 +100,7 @@ const proxyWebSocketUpgrade = ({
   readonly request: http.IncomingMessage;
   readonly route: TunnelRoute;
   readonly socket: Duplex;
+  readonly stripAuthorizationHeader: boolean;
   readonly streamTimeoutMs: number;
 }): void => {
   const startedAt = Date.now();
@@ -192,11 +200,13 @@ const proxyWebSocketUpgrade = ({
   socket.on("error", onSocketError);
   logger?.info(`${routePrefix} WS ${path} opened`);
 
+  const headers = normalizeWebSocketUpgradeHeaders(request.headers);
+  if (stripAuthorizationHeader) {
+    delete headers[AUTHORIZATION_HEADER];
+  }
+
   sendFrame({
-    headers: applyForwardedHeaders(
-      normalizeWebSocketUpgradeHeaders(request.headers),
-      requestContext,
-    ),
+    headers: applyForwardedHeaders(headers, requestContext),
     kind: "websocket",
     method: request.method ?? "GET",
     path: request.url ?? "/",
@@ -248,6 +258,18 @@ export const handlePublicWebSocketUpgrade = (
     return;
   }
 
+  const authResult = verifyBasicAuthHeader(
+    request.headers.authorization,
+    tunnel.basicAuth,
+  );
+  if (!authResult.ok) {
+    writeBasicAuthUpgradeChallenge(socket);
+    logger?.info(
+      `${formatRoutePrefix(route)} WS ${sanitizeLogPath(request.url)} -> 401 auth-required`,
+    );
+    return;
+  }
+
   proxyWebSocketUpgrade({
     connection: tunnel.connection,
     head,
@@ -256,6 +278,7 @@ export const handlePublicWebSocketUpgrade = (
     request,
     route,
     socket,
+    stripAuthorizationHeader: tunnel.basicAuth !== undefined,
     streamTimeoutMs,
   });
 };

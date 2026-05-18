@@ -10,6 +10,10 @@ import {
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
 
 export type HttpClientConfig = {
+  readonly basicAuth?: {
+    readonly password: string;
+    readonly username?: string;
+  };
   readonly localPort: number;
   readonly serverUrl: string;
   readonly subdomain?: string;
@@ -19,6 +23,8 @@ export type HttpClientConfig = {
   readonly logger?: RuntimeLogger;
   readonly reconnectDelayMs?: number;
 };
+
+type HttpClientBasicAuth = NonNullable<HttpClientConfig["basicAuth"]>;
 
 export type RunningTunnelClient = {
   readonly subdomain?: string;
@@ -47,11 +53,13 @@ const silentLogger: RuntimeLogger = {
 const formatRouteName = (subdomain?: string): string => subdomain ?? "root";
 
 const registerConnection = async ({
+  basicAuth,
   connection,
   subdomain,
   socket,
   token,
 }: {
+  readonly basicAuth?: HttpClientBasicAuth;
   readonly connection: ReturnType<typeof createWebSocketTunnelConnection>;
   readonly subdomain?: string;
   readonly socket: WebSocket;
@@ -87,6 +95,7 @@ const registerConnection = async ({
       void connection
         .send({
           type: "register",
+          ...(basicAuth ? { basicAuth } : {}),
           ...(subdomain ? { subdomain } : {}),
           token,
         })
@@ -164,6 +173,7 @@ type ActiveTunnelConnection = {
 };
 
 export const startHttpTunnelClient = async ({
+  basicAuth,
   heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
   heartbeatTimeoutMs = DEFAULT_HEARTBEAT_TIMEOUT_MS,
   localPort,
@@ -206,6 +216,7 @@ export const startHttpTunnelClient = async ({
     logger.info(`connected server=${logServerUrl}`);
     const connection = createWebSocketTunnelConnection(socket);
     await registerConnection({
+      basicAuth,
       connection,
       socket,
       subdomain,

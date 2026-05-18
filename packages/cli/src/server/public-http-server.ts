@@ -16,6 +16,10 @@ import {
 import type { TunnelFrame } from "#app/protocol/frame.ts";
 import type { TunnelConnection } from "#app/protocol/tunnel-connection.ts";
 import {
+  verifyBasicAuthHeader,
+  writeBasicAuthChallenge,
+} from "#app/server/basic-auth.ts";
+import {
   getRequestContext,
   type RequestContext,
 } from "#app/server/request-context.ts";
@@ -32,6 +36,8 @@ import {
 import { attachWebSocketUpgradeHandler } from "#app/server/websocket-upgrade.ts";
 
 export { DEFAULT_STREAM_TIMEOUT_MS };
+
+const AUTHORIZATION_HEADER = "authorization";
 
 export type PublicHttpServerOptions = {
   readonly address: HostPort;
@@ -190,6 +196,7 @@ const proxyHttpRequest = ({
   request,
   response,
   route,
+  stripAuthorizationHeader,
   streamTimeoutMs,
 }: {
   readonly connection: TunnelConnection;
@@ -198,6 +205,7 @@ const proxyHttpRequest = ({
   readonly request: http.IncomingMessage;
   readonly response: http.ServerResponse;
   readonly route: TunnelRoute;
+  readonly stripAuthorizationHeader: boolean;
   readonly streamTimeoutMs: number;
 }): void => {
   const startedAt = Date.now();
@@ -310,11 +318,15 @@ const proxyHttpRequest = ({
     });
   });
 
+  const headers = stripHttpHopByHopHeaders(
+    normalizeIncomingHeaders(request.headers),
+  );
+  if (stripAuthorizationHeader) {
+    delete headers[AUTHORIZATION_HEADER];
+  }
+
   sendFrame({
-    headers: applyForwardedHeaders(
-      stripHttpHopByHopHeaders(normalizeIncomingHeaders(request.headers)),
-      requestContext,
-    ),
+    headers: applyForwardedHeaders(headers, requestContext),
     kind: "http",
     method: request.method ?? "GET",
     path: request.url ?? "/",
@@ -373,6 +385,23 @@ export const handlePublicHttpRequest = ({
     return;
   }
 
+  const authResult = verifyBasicAuthHeader(
+    request.headers.authorization,
+    tunnel.basicAuth,
+  );
+  if (!authResult.ok) {
+    writeBasicAuthChallenge(response);
+    logHttpAccess({
+      detail: "auth-required",
+      logger,
+      method: request.method,
+      route,
+      status: 401,
+      url: request.url,
+    });
+    return;
+  }
+
   proxyHttpRequest({
     connection: tunnel.connection,
     logger,
@@ -380,6 +409,7 @@ export const handlePublicHttpRequest = ({
     request,
     response,
     route,
+    stripAuthorizationHeader: tunnel.basicAuth !== undefined,
     streamTimeoutMs,
   });
 };

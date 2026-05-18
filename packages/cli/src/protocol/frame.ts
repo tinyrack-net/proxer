@@ -2,10 +2,16 @@ import { isTunnelSubdomain } from "#app/protocol/subdomain.ts";
 
 export type HeaderMap = Record<string, string | string[]>;
 
+export type BasicAuthConfig = {
+  readonly password: string;
+  readonly username?: string;
+};
+
 export type RegisterFrame = {
   readonly type: "register";
   readonly subdomain?: string;
   readonly token?: string;
+  readonly basicAuth?: BasicAuthConfig;
 };
 
 export type RegisteredFrame = {
@@ -108,6 +114,7 @@ type CandidateFrame = {
   readonly type?: unknown;
   readonly subdomain?: unknown;
   readonly token?: unknown;
+  readonly basicAuth?: unknown;
   readonly streamId?: unknown;
   readonly kind?: unknown;
   readonly method?: unknown;
@@ -117,6 +124,22 @@ type CandidateFrame = {
   readonly direction?: unknown;
   readonly data?: unknown;
   readonly message?: unknown;
+};
+
+const isBasicAuthConfig = (value: unknown): value is BasicAuthConfig => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const candidate = value as {
+    readonly password?: unknown;
+    readonly username?: unknown;
+  };
+
+  return (
+    isNonEmptyString(candidate.password) &&
+    (candidate.username === undefined || isNonEmptyString(candidate.username))
+  );
 };
 
 export const isTunnelFrame = (value: unknown): value is TunnelFrame => {
@@ -132,7 +155,8 @@ export const isTunnelFrame = (value: unknown): value is TunnelFrame => {
       return (
         !hasRemovedNameField &&
         (frame.subdomain === undefined || isTunnelSubdomain(frame.subdomain)) &&
-        hasOptionalString(frame.token)
+        hasOptionalString(frame.token) &&
+        (frame.basicAuth === undefined || isBasicAuthConfig(frame.basicAuth))
       );
     case "registered":
       return (

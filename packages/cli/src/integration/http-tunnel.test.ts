@@ -8,6 +8,10 @@ import { listenOnRandomPort } from "#app/test/local-servers.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
 
+const basic = (value: string): string => {
+  return `Basic ${Buffer.from(value).toString("base64")}`;
+};
+
 const createLocalJsonEchoServer = async (): Promise<{
   readonly port: number;
   close(): Promise<void>;
@@ -311,7 +315,7 @@ const createLocalChunkedBinaryServer = async (
 
 const requestPublicJson = async (
   publicUrl: string,
-  options: { readonly host?: string } = {},
+  options: { readonly authorization?: string; readonly host?: string } = {},
 ): Promise<{
   readonly body: string;
   readonly headers: http.IncomingHttpHeaders;
@@ -324,6 +328,9 @@ const requestPublicJson = async (
       requestUrl,
       {
         headers: {
+          ...(options.authorization
+            ? { authorization: options.authorization }
+            : {}),
           "content-type": "text/plain",
           ...(options.host ? { host: options.host } : {}),
         },
@@ -502,6 +509,46 @@ describe("HTTP tunnel integration", () => {
       method: "POST",
       path: "/api/hello?x=1",
     });
+  });
+
+  it("requires public basic auth before forwarding HTTP requests", async () => {
+    const localServer = await createLocalNamedJsonServer("protected");
+    cleanups.push(() => localServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      basicAuth: { password: "site-secret" },
+      localPort: localServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+
+    const missingAuthResponse = await requestPublicJson(
+      proxerServer.publicUrl,
+      {
+        host: "demo.localhost",
+      },
+    );
+
+    expect(missingAuthResponse.status).toBe(401);
+    expect(localServer.requestCount).toBe(0);
+
+    const authorizedResponse = await requestPublicJson(proxerServer.publicUrl, {
+      authorization: basic("anything:site-secret"),
+      host: "demo.localhost",
+    });
+
+    expect(authorizedResponse.status).toBe(200);
+    expect(JSON.parse(authorizedResponse.body)).toEqual({
+      name: "protected",
+      path: "/api/hello?x=1",
+    });
+    expect(localServer.requestCount).toBe(1);
   });
 
   it("isolates concurrent HTTP streams over one tunnel", async () => {

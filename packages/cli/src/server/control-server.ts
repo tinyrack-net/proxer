@@ -111,7 +111,11 @@ export const createControlWebSocketServer = ({
         : { type: "root" };
 
       try {
-        registry.register({ route, connection });
+        registry.register({
+          ...(frame.basicAuth ? { basicAuth: frame.basicAuth } : {}),
+          connection,
+          route,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger?.info(

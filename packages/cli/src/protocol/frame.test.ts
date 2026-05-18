@@ -46,6 +46,36 @@ describe("tunnel frame validation", () => {
     expect(isTunnelFrame({ type: "close", streamId: "stream-1" })).toBe(true);
   });
 
+  it("accepts register frames with basic auth requirements", () => {
+    expect(
+      isTunnelFrame({
+        basicAuth: { password: "secret" },
+        type: "register",
+      }),
+    ).toBe(true);
+    expect(
+      isTunnelFrame({
+        basicAuth: { password: "secret", username: "admin" },
+        type: "register",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects invalid register frame basic auth requirements", () => {
+    expect(
+      isTunnelFrame({ basicAuth: { password: "" }, type: "register" }),
+    ).toBe(false);
+    expect(
+      isTunnelFrame({
+        basicAuth: { password: "secret", username: "" },
+        type: "register",
+      }),
+    ).toBe(false);
+    expect(isTunnelFrame({ basicAuth: "secret", type: "register" })).toBe(
+      false,
+    );
+  });
+
   it("rejects an invalid frame type", () => {
     expect(isTunnelFrame({ type: "ping" })).toBe(false);
   });

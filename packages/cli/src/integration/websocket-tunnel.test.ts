@@ -7,8 +7,17 @@ import { createLocalWebSocketEchoServer } from "#app/test/local-servers.ts";
 
 const randomAddress: HostPort = { host: "127.0.0.1", port: 0 };
 
-const openWebSocket = async (url: string): Promise<WebSocket> => {
-  const socket = new WebSocket(url, { headers: { host: "demo.localhost" } });
+const basic = (value: string): string => {
+  return `Basic ${Buffer.from(value).toString("base64")}`;
+};
+
+const openWebSocket = async (
+  url: string,
+  headers: Record<string, string> = {},
+): Promise<WebSocket> => {
+  const socket = new WebSocket(url, {
+    headers: { host: "demo.localhost", ...headers },
+  });
 
   await new Promise<void>((resolve, reject) => {
     socket.once("open", resolve);
@@ -16,6 +25,17 @@ const openWebSocket = async (url: string): Promise<WebSocket> => {
   });
 
   return socket;
+};
+
+const expectWebSocketOpenFailure = async (url: string): Promise<void> => {
+  const socket = new WebSocket(url, { headers: { host: "demo.localhost" } });
+
+  await expect(
+    new Promise<void>((resolve, reject) => {
+      socket.once("open", resolve);
+      socket.once("error", reject);
+    }),
+  ).rejects.toThrow("Unexpected server response: 401");
 };
 
 const waitForMessage = async (
@@ -132,6 +152,51 @@ describe("WebSocket tunnel integration", () => {
     publicSocket.close();
     await waitForClose(publicSocket);
     await localConnectionClosed;
+  });
+
+  it("requires public basic auth before opening websocket tunnels", async () => {
+    const localWebSocketServer = await createLocalWebSocketEchoServer();
+    cleanups.push(() => localWebSocketServer.close());
+    const proxerServer = await startServer({
+      listenAddress: randomAddress,
+      token: "dev-token",
+    });
+    cleanups.push(() => proxerServer.close());
+    const tunnelClient = await startHttpTunnelClient({
+      basicAuth: { password: "site-secret" },
+      localPort: localWebSocketServer.port,
+      serverUrl: proxerServer.controlUrl,
+      subdomain: "demo",
+      token: "dev-token",
+    });
+    cleanups.push(() => tunnelClient.close());
+    const publicWebSocketUrl = proxerServer.publicUrl.replace(
+      "http://",
+      "ws://",
+    );
+
+    await expectWebSocketOpenFailure(`${publicWebSocketUrl}/echo`);
+
+    const publicSocket = await openWebSocket(`${publicWebSocketUrl}/echo`, {
+      authorization: basic("anything:site-secret"),
+    });
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve) => {
+          if (publicSocket.readyState === WebSocket.CLOSED) {
+            resolve();
+            return;
+          }
+          publicSocket.once("close", () => resolve());
+          publicSocket.close();
+        }),
+    );
+
+    publicSocket.send("hello");
+    const message = await waitForMessage(publicSocket);
+
+    expect(message.isBinary).toBe(false);
+    expect(message.data.toString("utf8")).toBe("hello");
   });
 
   it("isolates concurrent public websocket connections over one tunnel", async () => {

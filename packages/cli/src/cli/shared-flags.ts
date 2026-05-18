@@ -24,6 +24,24 @@ export const parseToken = (input: string): string => {
   return token;
 };
 
+export const parseBasicAuthPassword = (input: string): string => {
+  const password = input.trim();
+  if (!password) {
+    throw new ProxerError("basic auth password must not be empty");
+  }
+
+  return password;
+};
+
+export const parseBasicAuthUsername = (input: string): string => {
+  const username = input.trim();
+  if (!username) {
+    throw new ProxerError("basic auth username must not be empty");
+  }
+
+  return username;
+};
+
 export const tokenFlag = {
   kind: "parsed" as const,
   parse: parseToken,
@@ -60,6 +78,22 @@ export const httpSubdomainFlag = {
   parse: parseHttpSubdomain,
   brief: "Subdomain used for host routing.",
   placeholder: "subdomain",
+  optional: true as const,
+};
+
+export const basicAuthPasswordFlag = {
+  kind: "parsed" as const,
+  parse: parseBasicAuthPassword,
+  brief: "Basic Auth password required for public tunnel access.",
+  placeholder: "password",
+  optional: true as const,
+};
+
+export const basicAuthUsernameFlag = {
+  kind: "parsed" as const,
+  parse: parseBasicAuthUsername,
+  brief: "Basic Auth username required for public tunnel access.",
+  placeholder: "username",
   optional: true as const,
 };
 

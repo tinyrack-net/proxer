@@ -282,6 +282,40 @@ describe("control server", () => {
     });
   });
 
+  it("stores basic auth requirements without logging credentials", async () => {
+    const registry = new TunnelRegistry();
+    const logger = createLogger();
+    const handle = await startControlServer({
+      address: randomAddress,
+      logger,
+      registry,
+      token: "expected-token",
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    socket.send(
+      encodeFrame({
+        basicAuth: { password: "secret", username: "admin" },
+        subdomain: "demo",
+        token: "expected-token",
+        type: "register",
+      }),
+    );
+
+    await expect(nextMessage(socket)).resolves.toEqual({
+      type: "registered",
+      subdomain: "demo",
+    });
+    expect(
+      registry.get({ type: "subdomain", subdomain: "demo" })?.basicAuth,
+    ).toEqual({ password: "secret", username: "admin" });
+    expect(logger.messages.join("\n")).not.toContain("secret");
+    expect(logger.messages.join("\n")).not.toContain("admin");
+    expect(logger.messages.join("\n")).not.toContain("basicAuth");
+  });
+
   it("rejects a different-length tunnel token without throwing", async () => {
     const registry = new TunnelRegistry();
     const handle = await startControlServer({
