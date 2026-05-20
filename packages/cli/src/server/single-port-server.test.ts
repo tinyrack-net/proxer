@@ -270,6 +270,8 @@ describe("single-port server health probes", () => {
     socket.send(encodeFrame({ type: "register", subdomain: "demo" }));
 
     await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "demo",
     });

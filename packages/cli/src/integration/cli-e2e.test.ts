@@ -37,13 +37,15 @@ const closeHttpServer = async (server: http.Server): Promise<void> => {
   });
 };
 
-const createLocalHttpServer = async (): Promise<{
+const createLocalHttpServer = async (
+  name = "cli-e2e",
+): Promise<{
   readonly port: number;
   close(): Promise<void>;
 }> => {
   const server = http.createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-    response.end(`cli-e2e:${request.method}:${request.url}\n`);
+    response.end(`${name}:${request.method}:${request.url}\n`);
   });
   const address = await listenOnRandomPort(server);
 
@@ -366,6 +368,90 @@ describe("CLI E2E", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toBe("cli-e2e:GET:/\n");
+  });
+
+  it("round-robins HTTP across built CLI cluster client processes", async () => {
+    const firstLocalServer = await createLocalHttpServer("cli-e2e-cluster-one");
+    cleanups.push(() => firstLocalServer.close());
+    const secondLocalServer = await createLocalHttpServer(
+      "cli-e2e-cluster-two",
+    );
+    cleanups.push(() => secondLocalServer.close());
+    const serverPort = await getFreePort();
+
+    const serverProcess = spawnCli([
+      "server",
+      "--listen",
+      `127.0.0.1:${serverPort}`,
+      "--domain",
+      "proxy.localhost",
+      "--token",
+      "e2e-token",
+    ]);
+    cleanups.push(() => stopCli(serverProcess));
+    const publicMatch = await waitForOutput(
+      serverProcess,
+      /^public: (http:\/\/127\.0\.0\.1:\d+)$/m,
+    );
+    const publicUrl = publicMatch[1];
+    if (!publicUrl) {
+      throw new Error(
+        `CLI did not print a public URL:\n${combinedOutput(serverProcess)}`,
+      );
+    }
+
+    const firstClientProcess = spawnCli([
+      "http",
+      String(firstLocalServer.port),
+      "--server",
+      publicUrl,
+      "--subdomain",
+      "demo",
+      "--mode",
+      "cluster",
+      "--token",
+      "e2e-token",
+    ]);
+    cleanups.push(() => stopCli(firstClientProcess));
+    await waitForOutput(firstClientProcess, /^subdomain: demo$/m);
+
+    const secondClientProcess = spawnCli([
+      "http",
+      String(secondLocalServer.port),
+      "--server",
+      publicUrl,
+      "--subdomain",
+      "demo",
+      "--mode",
+      "cluster",
+      "--token",
+      "e2e-token",
+    ]);
+    cleanups.push(() => stopCli(secondClientProcess));
+    await waitForOutput(secondClientProcess, /^subdomain: demo$/m);
+
+    const firstResponse = await requestPublic(publicUrl);
+    const secondResponse = await requestPublic(publicUrl);
+    const thirdResponse = await requestPublic(publicUrl);
+    const fourthResponse = await requestPublic(publicUrl);
+
+    expect([
+      firstResponse.status,
+      secondResponse.status,
+      thirdResponse.status,
+      fourthResponse.status,
+    ]).toEqual([200, 200, 200, 200]);
+    expect([
+      firstResponse.body,
+      secondResponse.body,
+      thirdResponse.body,
+      fourthResponse.body,
+    ]).toEqual([
+      "cli-e2e-cluster-one:GET:/\n",
+      "cli-e2e-cluster-two:GET:/\n",
+      "cli-e2e-cluster-one:GET:/\n",
+      "cli-e2e-cluster-two:GET:/\n",
+    ]);
   });
 
   it("uses an auto-assigned subdomain by default in real built CLI client processes", async () => {

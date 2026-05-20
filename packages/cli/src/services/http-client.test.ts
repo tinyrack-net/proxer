@@ -228,7 +228,11 @@ describe("HTTP tunnel client reliability", () => {
     cleanups.push(() => client.close());
 
     expect(client.subdomain).toBe("px-auto");
-    expect(registerFrame).toEqual({ type: "register", token: "secret" });
+    expect(registerFrame).toEqual({
+      mode: "single",
+      type: "register",
+      token: "secret",
+    });
   });
 
   it("reuses an auto-assigned subdomain when reconnecting", async () => {
@@ -273,8 +277,76 @@ describe("HTTP tunnel client reliability", () => {
       "expected reconnect registration",
     );
 
-    expect(registerFrames[0]).toEqual({ type: "register", token: "secret" });
+    expect(registerFrames[0]).toEqual({
+      mode: "single",
+      type: "register",
+      token: "secret",
+    });
     expect(registerFrames[1]).toEqual({
+      mode: "single",
+      subdomain: "px-auto",
+      token: "secret",
+      type: "register",
+    });
+  });
+
+  it("reuses an auto-assigned cluster subdomain when reconnecting", async () => {
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    const registerFrames: TunnelFrame[] = [];
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        const frame = decodeFrame(rawDataToBuffer(data));
+        registerFrames.push(frame);
+        socket.send(
+          encodeFrame({
+            mode: "cluster",
+            replicas: registerFrames.length,
+            type: "registered",
+            subdomain: "px-auto",
+          }),
+        );
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: 1,
+      mode: "cluster",
+      reconnectDelayMs: 10,
+      route: { type: "auto" },
+      serverUrl: `ws://${address.host}:${address.port}`,
+      token: "secret",
+    });
+    cleanups.push(() => client.close());
+    const [firstClient] = webSocketServer.clients;
+    firstClient?.close(1011, "drop");
+
+    await waitFor(
+      () => registerFrames.length >= 2,
+      "expected cluster reconnect registration",
+    );
+
+    expect(registerFrames[0]).toEqual({
+      mode: "cluster",
+      type: "register",
+      token: "secret",
+    });
+    expect(registerFrames[1]).toEqual({
+      mode: "cluster",
       subdomain: "px-auto",
       token: "secret",
       type: "register",
@@ -318,6 +390,7 @@ describe("HTTP tunnel client reliability", () => {
 
     expect(client.subdomain).toBeUndefined();
     expect(registerFrame).toEqual({
+      mode: "single",
       root: true,
       type: "register",
       token: "secret",
@@ -351,6 +424,49 @@ describe("HTTP tunnel client reliability", () => {
       startHttpTunnelClient({
         heartbeatIntervalMs: 0,
         localPort: 1,
+        reconnectDelayMs: 10,
+        route: { type: "subdomain", subdomain: "demo" },
+        serverUrl: `ws://${address.host}:${address.port}`,
+        token: "secret",
+      }),
+    ).rejects.toThrow('Registered unexpected tunnel "other"');
+  });
+
+  it("rejects an unexpected route even when registration includes cluster metadata", async () => {
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", () => {
+        socket.send(
+          encodeFrame({
+            mode: "cluster",
+            replicas: 2,
+            type: "registered",
+            subdomain: "other",
+          }),
+        );
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+
+    await expect(
+      startHttpTunnelClient({
+        heartbeatIntervalMs: 0,
+        localPort: 1,
+        mode: "cluster",
         reconnectDelayMs: 10,
         route: { type: "subdomain", subdomain: "demo" },
         serverUrl: `ws://${address.host}:${address.port}`,
@@ -450,6 +566,63 @@ describe("HTTP tunnel client reliability", () => {
 
     expect(registerFrame).toEqual({
       basicAuth: { password: "site-secret", username: "admin" },
+      mode: "single",
+      subdomain: "demo",
+      token: "dev-token",
+      type: "register",
+    });
+  });
+
+  it("sends cluster mode in the registration frame", async () => {
+    const server = http.createServer();
+    const webSocketServer = new WebSocketServer({ server });
+    let registerFrame: TunnelFrame | undefined;
+    webSocketServer.on("connection", (socket) => {
+      socket.on("message", (data) => {
+        const frame = decodeFrame(rawDataToBuffer(data));
+        if (frame.type !== "register") {
+          return;
+        }
+
+        registerFrame = frame;
+        socket.send(
+          encodeFrame({
+            mode: "cluster",
+            replicas: 2,
+            type: "registered",
+            ...(frame.subdomain ? { subdomain: frame.subdomain } : {}),
+          }),
+        );
+      });
+    });
+    const address = await listenOnRandomPort(server);
+    cleanups.push(async () => {
+      await new Promise<void>((resolve, reject) => {
+        webSocketServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await closeServer(server);
+    });
+
+    const client = await startHttpTunnelClient({
+      heartbeatIntervalMs: 0,
+      localPort: 1,
+      mode: "cluster",
+      reconnectDelayMs: 10,
+      route: { type: "subdomain", subdomain: "demo" },
+      serverUrl: `ws://${address.host}:${address.port}`,
+      token: "dev-token",
+    });
+    cleanups.push(() => client.close());
+
+    expect(registerFrame).toEqual({
+      mode: "cluster",
       subdomain: "demo",
       token: "dev-token",
       type: "register",

@@ -123,6 +123,37 @@ const requestPublic = async ({
   });
 };
 
+const completeHttpResponse = (
+  connection: FakeTunnelConnection,
+  openFrame: TunnelFrame,
+  body: string,
+  status = 200,
+): void => {
+  if (openFrame.type !== "open") {
+    throw new Error("expected open frame");
+  }
+
+  connection.emitFrame({
+    headers: {},
+    status,
+    streamId: openFrame.streamId,
+    type: "headers",
+  });
+  if (body) {
+    connection.emitFrame({
+      data: Buffer.from(body).toString("base64"),
+      direction: "response",
+      streamId: openFrame.streamId,
+      type: "data",
+    });
+  }
+  connection.emitFrame({
+    direction: "response",
+    streamId: openFrame.streamId,
+    type: "end",
+  });
+};
+
 describe("public HTTP server", () => {
   const handles: Array<{ close(): Promise<void> }> = [];
 
@@ -393,6 +424,230 @@ describe("public HTTP server", () => {
     await expect(responsePromise).resolves.toMatchObject({
       body: "created",
       status: 201,
+    });
+  });
+
+  it("round-robins HTTP requests across cluster replicas", async () => {
+    const registry = new TunnelRegistry();
+    const firstConnection = new FakeTunnelConnection();
+    const secondConnection = new FakeTunnelConnection();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
+    registry.register({ route, connection: firstConnection, mode: "cluster" });
+    registry.register({ route, connection: secondConnection, mode: "cluster" });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const firstResponsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    const firstOpenFrame = await firstConnection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+    if (firstOpenFrame.type !== "open") {
+      throw new Error("expected first open frame");
+    }
+    firstConnection.emitFrame({
+      headers: {},
+      status: 200,
+      streamId: firstOpenFrame.streamId,
+      type: "headers",
+    });
+    firstConnection.emitFrame({
+      data: Buffer.from("first").toString("base64"),
+      direction: "response",
+      streamId: firstOpenFrame.streamId,
+      type: "data",
+    });
+    firstConnection.emitFrame({
+      direction: "response",
+      streamId: firstOpenFrame.streamId,
+      type: "end",
+    });
+
+    const secondResponsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    const secondOpenFrame = await secondConnection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+    if (secondOpenFrame.type !== "open") {
+      throw new Error("expected second open frame");
+    }
+    secondConnection.emitFrame({
+      headers: {},
+      status: 200,
+      streamId: secondOpenFrame.streamId,
+      type: "headers",
+    });
+    secondConnection.emitFrame({
+      data: Buffer.from("second").toString("base64"),
+      direction: "response",
+      streamId: secondOpenFrame.streamId,
+      type: "data",
+    });
+    secondConnection.emitFrame({
+      direction: "response",
+      streamId: secondOpenFrame.streamId,
+      type: "end",
+    });
+
+    await expect(firstResponsePromise).resolves.toMatchObject({
+      body: "first",
+      status: 200,
+    });
+    await expect(secondResponsePromise).resolves.toMatchObject({
+      body: "second",
+      status: 200,
+    });
+  });
+
+  it("round-robins HTTP requests across three cluster replicas", async () => {
+    const registry = new TunnelRegistry();
+    const firstConnection = new FakeTunnelConnection();
+    const secondConnection = new FakeTunnelConnection();
+    const thirdConnection = new FakeTunnelConnection();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
+    registry.register({ route, connection: firstConnection, mode: "cluster" });
+    registry.register({ route, connection: secondConnection, mode: "cluster" });
+    registry.register({ route, connection: thirdConnection, mode: "cluster" });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const firstResponsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    completeHttpResponse(
+      firstConnection,
+      await firstConnection.waitForSentFrame((frame) => frame.type === "open"),
+      "first",
+    );
+    const secondResponsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    completeHttpResponse(
+      secondConnection,
+      await secondConnection.waitForSentFrame((frame) => frame.type === "open"),
+      "second",
+    );
+    const thirdResponsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    completeHttpResponse(
+      thirdConnection,
+      await thirdConnection.waitForSentFrame((frame) => frame.type === "open"),
+      "third",
+    );
+    const fourthResponsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    completeHttpResponse(
+      firstConnection,
+      await firstConnection.waitForSentFrame(
+        (frame) => frame.type === "open" && frame !== firstConnection.sent[0],
+      ),
+      "fourth",
+    );
+
+    await expect(firstResponsePromise).resolves.toMatchObject({
+      body: "first",
+    });
+    await expect(secondResponsePromise).resolves.toMatchObject({
+      body: "second",
+    });
+    await expect(thirdResponsePromise).resolves.toMatchObject({
+      body: "third",
+    });
+    await expect(fourthResponsePromise).resolves.toMatchObject({
+      body: "fourth",
+    });
+  });
+
+  it("enforces cluster basic auth once and strips authorization before forwarding", async () => {
+    const registry = new TunnelRegistry();
+    const firstConnection = new FakeTunnelConnection();
+    const secondConnection = new FakeTunnelConnection();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
+    const basicAuth = { password: "secret", username: "admin" } as const;
+    registry.register({
+      basicAuth,
+      route,
+      connection: firstConnection,
+      mode: "cluster",
+    });
+    registry.register({
+      basicAuth,
+      route,
+      connection: secondConnection,
+      mode: "cluster",
+    });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: {
+        authorization: basic("admin:secret"),
+        host: "demo.localhost",
+      },
+      url: handle.url,
+    });
+    const openFrame = await firstConnection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+
+    if (openFrame.type !== "open") {
+      throw new Error("expected open frame");
+    }
+    expect(openFrame.headers).not.toHaveProperty("authorization");
+    expect(secondConnection.sent).toEqual([]);
+    completeHttpResponse(firstConnection, openFrame, "ok");
+    await expect(responsePromise).resolves.toMatchObject({
+      body: "ok",
+      status: 200,
+    });
+  });
+
+  it("routes HTTP requests to remaining replicas after one cluster member unregisters", async () => {
+    const registry = new TunnelRegistry();
+    const firstConnection = new FakeTunnelConnection();
+    const secondConnection = new FakeTunnelConnection();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
+    registry.register({ route, connection: firstConnection, mode: "cluster" });
+    registry.register({ route, connection: secondConnection, mode: "cluster" });
+    registry.unregister(route, firstConnection);
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+
+    const responsePromise = requestPublic({
+      headers: { host: "demo.localhost" },
+      url: handle.url,
+    });
+    const openFrame = await secondConnection.waitForSentFrame(
+      (frame) => frame.type === "open",
+    );
+
+    expect(firstConnection.sent).toEqual([]);
+    completeHttpResponse(secondConnection, openFrame, "remaining");
+    await expect(responsePromise).resolves.toMatchObject({
+      body: "remaining",
+      status: 200,
     });
   });
 

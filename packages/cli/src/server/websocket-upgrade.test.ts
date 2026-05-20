@@ -226,6 +226,110 @@ describe("public WebSocket upgrade tunneling", () => {
     expect(requestDataFrame).toMatchObject({ streamId: openFrame.streamId });
   });
 
+  it("selects one cluster replica when opening each websocket stream", async () => {
+    const registry = new TunnelRegistry();
+    const firstConnection = new FakeTunnelConnection();
+    const secondConnection = new FakeTunnelConnection();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
+    registry.register({ route, connection: firstConnection, mode: "cluster" });
+    registry.register({ route, connection: secondConnection, mode: "cluster" });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const firstClient = await connectRawUpgrade(handle.url, "demo.localhost");
+    const secondClient = await connectRawUpgrade(handle.url, "demo.localhost");
+    cleanups.push(() => {
+      firstClient.socket.destroy();
+      secondClient.socket.destroy();
+    });
+    const firstOpenFrame = await firstConnection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+    const secondOpenFrame = await secondConnection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+    if (firstOpenFrame.type !== "open") {
+      throw new Error("expected first websocket open frame");
+    }
+    if (secondOpenFrame.type !== "open") {
+      throw new Error("expected second websocket open frame");
+    }
+
+    firstClient.socket.write("first-client-bytes");
+
+    await expect(
+      firstConnection.waitForSentFrame(
+        (frame): frame is DataFrame =>
+          frame.type === "data" &&
+          frame.streamId === firstOpenFrame.streamId &&
+          frame.direction === "request" &&
+          Buffer.from(frame.data, "base64").toString("utf8") ===
+            "first-client-bytes",
+      ),
+    ).resolves.toMatchObject({ streamId: firstOpenFrame.streamId });
+    expect(secondConnection.sent).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ streamId: firstOpenFrame.streamId }),
+      ]),
+    );
+    expect(secondConnection.sent).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ streamId: secondOpenFrame.streamId }),
+      ]),
+    );
+  });
+
+  it("rotates repeated websocket upgrades across cluster replicas", async () => {
+    const registry = new TunnelRegistry();
+    const firstConnection = new FakeTunnelConnection();
+    const secondConnection = new FakeTunnelConnection();
+    const thirdConnection = new FakeTunnelConnection();
+    const route = { type: "subdomain", subdomain: "demo" } as const;
+    registry.register({ route, connection: firstConnection, mode: "cluster" });
+    registry.register({ route, connection: secondConnection, mode: "cluster" });
+    registry.register({ route, connection: thirdConnection, mode: "cluster" });
+    const handle = await startPublicHttpServer({
+      address: randomAddress,
+      registry,
+    });
+    cleanups.push(() => handle.close());
+
+    const firstClient = await connectRawUpgrade(handle.url, "demo.localhost");
+    const secondClient = await connectRawUpgrade(handle.url, "demo.localhost");
+    const thirdClient = await connectRawUpgrade(handle.url, "demo.localhost");
+    const fourthClient = await connectRawUpgrade(handle.url, "demo.localhost");
+    cleanups.push(() => {
+      firstClient.socket.destroy();
+      secondClient.socket.destroy();
+      thirdClient.socket.destroy();
+      fourthClient.socket.destroy();
+    });
+
+    const firstOpenFrame = await firstConnection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+    const secondOpenFrame = await secondConnection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+    const thirdOpenFrame = await thirdConnection.waitForSentFrame(
+      (frame) => frame.type === "open" && frame.kind === "websocket",
+    );
+    const fourthOpenFrame = await firstConnection.waitForSentFrame(
+      (frame) =>
+        frame.type === "open" &&
+        frame.kind === "websocket" &&
+        frame !== firstOpenFrame,
+    );
+
+    expect(firstOpenFrame).toMatchObject({ kind: "websocket", type: "open" });
+    expect(secondOpenFrame).toMatchObject({ kind: "websocket", type: "open" });
+    expect(thirdOpenFrame).toMatchObject({ kind: "websocket", type: "open" });
+    expect(fourthOpenFrame).toMatchObject({ kind: "websocket", type: "open" });
+  });
+
   it("rejects missing basic auth for a protected websocket tunnel", async () => {
     const registry = new TunnelRegistry();
     const connection = new FakeTunnelConnection();

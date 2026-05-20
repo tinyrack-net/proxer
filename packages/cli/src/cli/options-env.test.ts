@@ -188,6 +188,124 @@ describe("CLI PROXER_ environment options", () => {
     });
   });
 
+  it("passes an HTTP cluster mode flag to the client", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "demo", "--mode", "cluster"],
+      createCapturedProcess({ PROXER_TOKEN: "secret" }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      mode: "cluster",
+      route: { type: "subdomain", subdomain: "demo" },
+      token: "secret",
+    });
+  });
+
+  it("uses HTTP cluster mode from the environment", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "demo"],
+      createCapturedProcess({
+        PROXER_MODE: "cluster",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({ mode: "cluster" });
+  });
+
+  it("passes an explicit HTTP single mode flag to the client", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "demo", "--mode", "single"],
+      createCapturedProcess({ PROXER_TOKEN: "secret" }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      mode: "single",
+      route: { type: "subdomain", subdomain: "demo" },
+    });
+  });
+
+  it("prefers an HTTP mode flag over the environment", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "demo", "--mode", "single"],
+      createCapturedProcess({
+        PROXER_MODE: "cluster",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({ mode: "single" });
+  });
+
+  it("uses HTTP single mode from the environment", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "demo"],
+      createCapturedProcess({
+        PROXER_MODE: "single",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({ mode: "single" });
+  });
+
+  it("trims whitespace around HTTP mode values", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "demo"],
+      createCapturedProcess({
+        PROXER_MODE: "  cluster  ",
+        PROXER_TOKEN: "secret",
+      }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({ mode: "cluster" });
+  });
+
+  it("rejects an invalid HTTP tunnel mode from the environment", async () => {
+    const process = createCapturedProcess({
+      PROXER_MODE: "many",
+      PROXER_TOKEN: "secret",
+    });
+
+    await runCli(["http", "3000", "--subdomain", "demo"], process);
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
+    expect(process.result().exitCode).not.toBe(0);
+    expect(process.result().stderr).toContain("mode must be single or cluster");
+  });
+
+  it("rejects uppercase HTTP tunnel modes", async () => {
+    const process = createCapturedProcess({ PROXER_TOKEN: "secret" });
+
+    await runCli(["http", "3000", "--mode", "Cluster"], process);
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
+    expect(process.result().exitCode).not.toBe(0);
+    expect(process.result().stderr).toContain("mode must be single or cluster");
+  });
+
+  it("composes HTTP cluster mode with root-domain routing", async () => {
+    await runCli(
+      ["http", "3000", "--subdomain", "@", "--mode", "cluster"],
+      createCapturedProcess({ PROXER_TOKEN: "secret" }),
+    );
+
+    expect(firstHttpConfig()).toMatchObject({
+      mode: "cluster",
+      route: { type: "root" },
+    });
+  });
+
+  it("rejects an invalid HTTP tunnel mode", async () => {
+    const process = createCapturedProcess({ PROXER_TOKEN: "secret" });
+
+    await runCli(["http", "3000", "--mode", "many"], process);
+
+    expect(mocks.runHttpClient).not.toHaveBeenCalled();
+    expect(process.result().exitCode).not.toBe(0);
+    expect(process.result().stderr).toContain("mode must be single or cluster");
+  });
+
   it("uses root-domain routing for the HTTP subdomain flag sentinel", async () => {
     await runCli(
       ["http", "3000", "--subdomain", "@"],

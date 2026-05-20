@@ -7,6 +7,7 @@ import {
   type RuntimeLogger,
   sanitizeLogUrl,
 } from "#app/lib/logging.ts";
+import type { RouteMode } from "#app/protocol/frame.ts";
 import { createWebSocketTunnelConnection } from "#app/protocol/tunnel-connection.ts";
 
 export type HttpClientRouteRequest =
@@ -21,6 +22,7 @@ export type HttpClientConfig = {
   };
   readonly localPort: number;
   readonly serverUrl: string;
+  readonly mode?: RouteMode;
   readonly route?: HttpClientRouteRequest;
   readonly token?: string;
   readonly heartbeatIntervalMs?: number;
@@ -116,11 +118,13 @@ const registerConnection = async ({
   basicAuth,
   connection,
   route,
+  mode,
   socket,
   token,
 }: {
   readonly basicAuth?: HttpClientBasicAuth;
   readonly connection: ReturnType<typeof createWebSocketTunnelConnection>;
+  readonly mode: RouteMode;
   readonly route: HttpClientRouteRequest;
   readonly socket: WebSocket;
   readonly token?: string;
@@ -152,6 +156,7 @@ const registerConnection = async ({
           type: "register",
           ...(basicAuth ? { basicAuth } : {}),
           ...buildRegisterRouteFields(route),
+          mode,
           token,
         })
         .catch((error: unknown) => {
@@ -234,6 +239,7 @@ export const startHttpTunnelClient = async ({
   heartbeatTimeoutMs = DEFAULT_HEARTBEAT_TIMEOUT_MS,
   localPort,
   logger = silentLogger,
+  mode = "single",
   reconnectDelayMs = DEFAULT_RECONNECT_DELAY_MS,
   route = { type: "auto" },
   serverUrl,
@@ -273,6 +279,7 @@ export const startHttpTunnelClient = async ({
     const registeredRoute = await registerConnection({
       basicAuth,
       connection,
+      mode,
       route: routeRequest,
       socket,
       token: tunnelToken,

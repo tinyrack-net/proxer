@@ -101,6 +101,18 @@ Then request the matching host:
 curl https://demo.your-server.example.com/
 ```
 
+Use cluster mode when multiple clients should share one named route:
+
+```bash
+proxer http 3000 \
+  --server wss://your-server.example.com \
+  --subdomain demo \
+  --mode cluster \
+  --token dev-token
+```
+
+All clients for a route must use the same mode. Cluster routes distribute HTTP requests round-robin and choose one tunnel when a WebSocket, SSE, or other long-lived stream opens.
+
 Request the root-domain route only when you intend to occupy the root host:
 
 ```bash
@@ -178,6 +190,7 @@ If the server token is omitted, Proxer prints the generated token as `token: ...
 | --- | --- | --- |
 | `--server <url>` | `PROXER_SERVER` | `ws://127.0.0.1:8080` |
 | `--subdomain <subdomain>` | `PROXER_SUBDOMAIN` | auto-assigned random subdomain |
+| `--mode <single\|cluster>` | `PROXER_MODE` | `single` |
 | `--token <token>` | `PROXER_TOKEN` | required |
 | `--basic-auth-password <password>` | `PROXER_BASIC_AUTH_PASSWORD` | unset |
 | `--basic-auth-username <username>` | `PROXER_BASIC_AUTH_USERNAME` | unset |

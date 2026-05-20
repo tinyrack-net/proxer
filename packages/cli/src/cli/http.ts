@@ -8,6 +8,8 @@ import {
   httpServerFlag,
   httpSubdomainFlag,
   parseHttpSubdomain,
+  parseRouteMode,
+  routeModeFlag,
   tokenFlag,
 } from "#app/cli/shared-flags.ts";
 import { DEFAULT_HTTP_SERVER_URL } from "#app/config/constants.ts";
@@ -17,6 +19,7 @@ import { ProxerError } from "#app/lib/error.ts";
 type HttpFlags = {
   readonly basicAuthPassword?: string;
   readonly basicAuthUsername?: string;
+  readonly mode?: ReturnType<typeof parseRouteMode>;
   readonly server?: string;
   readonly subdomain?: string;
   readonly token?: string;
@@ -61,6 +64,7 @@ export const buildHttpCommand = () => {
       flags: {
         basicAuthPassword: basicAuthPasswordFlag,
         basicAuthUsername: basicAuthUsernameFlag,
+        mode: routeModeFlag,
         server: httpServerFlag,
         subdomain: httpSubdomainFlag,
         token: tokenFlag,
@@ -101,6 +105,11 @@ export const buildHttpCommand = () => {
         flags.basicAuthUsername,
         readEnvString({ env, name: "PROXER_BASIC_AUTH_USERNAME" }),
       );
+      const envMode = readEnvString({ env, name: "PROXER_MODE" });
+      const mode = preferFlag(
+        flags.mode,
+        envMode === undefined ? undefined : parseRouteMode(envMode),
+      );
       if (basicAuthUsername && !basicAuthPassword) {
         throw new ProxerError(
           "basic auth password is required when username is set",
@@ -118,6 +127,7 @@ export const buildHttpCommand = () => {
               }
             : {}),
           localPort,
+          ...(mode ? { mode } : {}),
           route,
           serverUrl: resolveControlServerUrl({ server }),
           token,

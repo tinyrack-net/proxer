@@ -14,6 +14,7 @@ import {
 import type { TunnelRoute } from "#app/server/route-target.ts";
 import {
   DuplicateTunnelRouteError,
+  type RegisterTunnelResult,
   type TunnelRegistry,
 } from "#app/server/stream-registry.ts";
 
@@ -147,12 +148,14 @@ export const createControlWebSocketServer = ({
 
       const requestedRoute = resolveRequestedRoute(frame);
       let route = requestedRoute;
+      let registerResult: RegisterTunnelResult | undefined;
 
       try {
         if (route) {
-          registry.register({
+          registerResult = registry.register({
             ...(frame.basicAuth ? { basicAuth: frame.basicAuth } : {}),
             connection,
+            mode: frame.mode ?? "single",
             route,
           });
         } else {
@@ -170,9 +173,10 @@ export const createControlWebSocketServer = ({
             }
 
             try {
-              registry.register({
+              registerResult = registry.register({
                 ...(frame.basicAuth ? { basicAuth: frame.basicAuth } : {}),
                 connection,
+                mode: frame.mode ?? "single",
                 route: generatedRoute,
               });
               route = generatedRoute;
@@ -218,6 +222,8 @@ export const createControlWebSocketServer = ({
       );
       void connection.send({
         type: "registered",
+        mode: registerResult?.mode ?? "single",
+        replicas: registerResult?.replicas ?? 1,
         ...(route.type === "subdomain" ? { subdomain: route.subdomain } : {}),
       });
     });

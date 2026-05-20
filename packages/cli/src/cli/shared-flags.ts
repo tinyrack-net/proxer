@@ -1,4 +1,5 @@
 import { ProxerError } from "#app/lib/error.ts";
+import type { RouteMode } from "#app/protocol/frame.ts";
 import {
   isTunnelSubdomain,
   normalizeTunnelSubdomain,
@@ -48,6 +49,15 @@ export const parseBasicAuthUsername = (input: string): string => {
   }
 
   return username;
+};
+
+export const parseRouteMode = (input: string): RouteMode => {
+  const mode = input.trim();
+  if (mode === "single" || mode === "cluster") {
+    return mode;
+  }
+
+  throw new ProxerError("mode must be single or cluster");
 };
 
 export const tokenFlag = {
@@ -103,6 +113,14 @@ export const basicAuthUsernameFlag = {
   parse: parseBasicAuthUsername,
   brief: "Basic Auth username required for public tunnel access.",
   placeholder: "username",
+  optional: true as const,
+};
+
+export const routeModeFlag = {
+  kind: "parsed" as const,
+  parse: parseRouteMode,
+  brief: "Tunnel route sharing mode: single or cluster.",
+  placeholder: "mode",
   optional: true as const,
 };
 

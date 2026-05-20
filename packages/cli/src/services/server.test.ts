@@ -106,6 +106,8 @@ describe("server service", () => {
         }),
       );
       await expect(nextMessage(socket)).resolves.toEqual({
+        mode: "single",
+        replicas: 1,
         type: "registered",
         subdomain: "demo",
       });

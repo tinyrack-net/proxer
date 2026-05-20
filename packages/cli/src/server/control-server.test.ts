@@ -127,6 +127,8 @@ describe("control server", () => {
     socket.send(encodeFrame({ type: "register", subdomain: "demo" }));
 
     await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "demo",
     });
@@ -152,6 +154,8 @@ describe("control server", () => {
     socket.send(encodeFrame({ type: "register" }));
 
     await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "px-auto",
     });
@@ -174,7 +178,11 @@ describe("control server", () => {
 
     socket.send(encodeFrame({ type: "register", root: true }));
 
-    await expect(nextMessage(socket)).resolves.toEqual({ type: "registered" });
+    await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
+      type: "registered",
+    });
     expect(registry.get({ type: "root" })?.route).toEqual({ type: "root" });
     expect(
       registry.get({ type: "subdomain", subdomain: "px-auto" }),
@@ -201,6 +209,8 @@ describe("control server", () => {
     secondSocket.send(encodeFrame({ type: "register" }));
 
     await expect(nextMessage(secondSocket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "px-free",
     });
@@ -213,7 +223,7 @@ describe("control server", () => {
     class RenamedDuplicateRegistry extends TunnelRegistry {
       override register(
         tunnel: Parameters<TunnelRegistry["register"]>[0],
-      ): void {
+      ): ReturnType<TunnelRegistry["register"]> {
         if (
           tunnel.route.type === "subdomain" &&
           tunnel.route.subdomain === "px-collide"
@@ -221,7 +231,7 @@ describe("control server", () => {
           throw new DuplicateTunnelRouteError(tunnel.route, "route occupied");
         }
 
-        super.register(tunnel);
+        return super.register(tunnel);
       }
     }
 
@@ -239,6 +249,8 @@ describe("control server", () => {
     socket.send(encodeFrame({ type: "register" }));
 
     await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "px-free",
     });
@@ -262,6 +274,8 @@ describe("control server", () => {
     socket.send(encodeFrame({ type: "register" }));
 
     await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "px-free",
     });
@@ -397,6 +411,8 @@ describe("control server", () => {
     socket.send(encodeFrame({ type: "register", subdomain: "demo" }));
 
     await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "demo",
     });
@@ -467,6 +483,8 @@ describe("control server", () => {
     );
 
     await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "demo",
     });
@@ -495,6 +513,8 @@ describe("control server", () => {
     );
 
     await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "single",
+      replicas: 1,
       type: "registered",
       subdomain: "demo",
     });
@@ -576,6 +596,248 @@ describe("control server", () => {
         "[demo] client rejected reason=duplicate-subdomain",
       ),
     ]);
+  });
+
+  it("registers multiple clients for a cluster route", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({ type: "register", subdomain: "demo", mode: "cluster" }),
+    );
+    secondSocket.send(
+      encodeFrame({ type: "register", subdomain: "demo", mode: "cluster" }),
+    );
+
+    await expect(nextMessage(firstSocket)).resolves.toEqual({
+      mode: "cluster",
+      replicas: 1,
+      type: "registered",
+      subdomain: "demo",
+    });
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      mode: "cluster",
+      replicas: 2,
+      type: "registered",
+      subdomain: "demo",
+    });
+  });
+
+  it("rejects mixed cluster and single route registrations", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({ type: "register", subdomain: "demo", mode: "cluster" }),
+    );
+    await nextMessage(firstSocket);
+    secondSocket.send(encodeFrame({ type: "register", subdomain: "demo" }));
+
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      type: "error",
+      streamId: "registration",
+      message: 'Tunnel subdomain "demo" is already registered in cluster mode',
+    });
+  });
+
+  it("rejects cluster registration after a single route", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({ type: "register", subdomain: "demo", mode: "single" }),
+    );
+    await nextMessage(firstSocket);
+    secondSocket.send(
+      encodeFrame({ type: "register", subdomain: "demo", mode: "cluster" }),
+    );
+
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      type: "error",
+      streamId: "registration",
+      message: 'Tunnel subdomain "demo" is already registered in single mode',
+    });
+  });
+
+  it("treats missing mode as single and rejects duplicate registrations", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(encodeFrame({ type: "register", subdomain: "demo" }));
+    await nextMessage(firstSocket);
+    secondSocket.send(encodeFrame({ type: "register", subdomain: "demo" }));
+
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      type: "error",
+      streamId: "registration",
+      message: 'Tunnel subdomain "demo" is already registered',
+    });
+  });
+
+  it("rejects missing-mode registration after a cluster route", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({ type: "register", subdomain: "demo", mode: "cluster" }),
+    );
+    await nextMessage(firstSocket);
+    secondSocket.send(encodeFrame({ type: "register", subdomain: "demo" }));
+
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      type: "error",
+      streamId: "registration",
+      message: 'Tunnel subdomain "demo" is already registered in cluster mode',
+    });
+  });
+
+  it("registers root cluster replicas and reports increasing replica counts", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({ type: "register", root: true, mode: "cluster" }),
+    );
+    secondSocket.send(
+      encodeFrame({ type: "register", root: true, mode: "cluster" }),
+    );
+
+    await expect(nextMessage(firstSocket)).resolves.toEqual({
+      mode: "cluster",
+      replicas: 1,
+      type: "registered",
+    });
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      mode: "cluster",
+      replicas: 2,
+      type: "registered",
+    });
+  });
+
+  it("returns mode and replica count for auto-assigned cluster routes", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      generateSubdomain: () => "px-auto",
+      registry,
+    });
+    handles.push(handle);
+    const socket = await openWebSocket(handle.url);
+    sockets.push(socket);
+
+    socket.send(encodeFrame({ type: "register", mode: "cluster" }));
+
+    await expect(nextMessage(socket)).resolves.toEqual({
+      mode: "cluster",
+      replicas: 1,
+      type: "registered",
+      subdomain: "px-auto",
+    });
+  });
+
+  it("retries auto-assigned cluster collisions and preserves mode", async () => {
+    const registry = new TunnelRegistry();
+    const candidates = ["px-collide", "px-free"];
+    const handle = await startControlServer({
+      address: randomAddress,
+      generateSubdomain: () => candidates.shift() ?? "px-extra",
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({ type: "register", subdomain: "px-collide" }),
+    );
+    await nextMessage(firstSocket);
+    secondSocket.send(encodeFrame({ type: "register", mode: "cluster" }));
+
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      mode: "cluster",
+      replicas: 1,
+      type: "registered",
+      subdomain: "px-free",
+    });
+  });
+
+  it("rejects an incompatible basic auth cluster replica at registration", async () => {
+    const registry = new TunnelRegistry();
+    const handle = await startControlServer({
+      address: randomAddress,
+      registry,
+    });
+    handles.push(handle);
+    const firstSocket = await openWebSocket(handle.url);
+    const secondSocket = await openWebSocket(handle.url);
+    sockets.push(firstSocket, secondSocket);
+
+    firstSocket.send(
+      encodeFrame({
+        basicAuth: { password: "secret", username: "admin" },
+        type: "register",
+        subdomain: "demo",
+        mode: "cluster",
+      }),
+    );
+    await nextMessage(firstSocket);
+    secondSocket.send(
+      encodeFrame({
+        basicAuth: { password: "secret", username: "other" },
+        type: "register",
+        subdomain: "demo",
+        mode: "cluster",
+      }),
+    );
+
+    await expect(nextMessage(secondSocket)).resolves.toEqual({
+      type: "error",
+      streamId: "registration",
+      message: "Cluster tunnel basic auth must match existing route",
+    });
   });
 
   it("unregisters a tunnel when the client disconnects", async () => {

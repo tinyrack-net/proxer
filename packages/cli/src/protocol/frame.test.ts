@@ -6,10 +6,20 @@ describe("tunnel frame validation", () => {
     expect(isTunnelFrame({ type: "register" })).toBe(true);
     expect(isTunnelFrame({ type: "register", root: true })).toBe(true);
     expect(
+      isTunnelFrame({ type: "register", root: true, mode: "cluster" }),
+    ).toBe(true);
+    expect(isTunnelFrame({ type: "register", mode: "single" })).toBe(true);
+    expect(isTunnelFrame({ type: "register", mode: "cluster" })).toBe(true);
+    expect(
       isTunnelFrame({ type: "register", root: true, token: "secret" }),
     ).toBe(true);
     expect(isTunnelFrame({ type: "register", subdomain: "demo" })).toBe(true);
     expect(isTunnelFrame({ type: "registered" })).toBe(true);
+    expect(isTunnelFrame({ type: "registered", mode: "single" })).toBe(true);
+    expect(isTunnelFrame({ type: "registered", replicas: 1 })).toBe(true);
+    expect(
+      isTunnelFrame({ type: "registered", mode: "cluster", replicas: 2 }),
+    ).toBe(true);
     expect(isTunnelFrame({ type: "registered", subdomain: "demo" })).toBe(true);
     expect(
       isTunnelFrame({
@@ -80,6 +90,16 @@ describe("tunnel frame validation", () => {
     );
   });
 
+  it("rejects invalid route modes and replica counts", () => {
+    expect(isTunnelFrame({ type: "register", mode: "many" })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", mode: "many" })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", replicas: 0 })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", replicas: -1 })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", replicas: 1.5 })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", replicas: "2" })).toBe(false);
+    expect(isTunnelFrame({ type: "registered", replicas: null })).toBe(false);
+  });
+
   it("rejects an invalid frame type", () => {
     expect(isTunnelFrame({ type: "ping" })).toBe(false);
   });
@@ -105,6 +125,14 @@ describe("tunnel frame validation", () => {
   it("rejects invalid explicit root registration frames", () => {
     expect(
       isTunnelFrame({ type: "register", root: true, subdomain: "demo" }),
+    ).toBe(false);
+    expect(
+      isTunnelFrame({
+        type: "register",
+        root: true,
+        subdomain: "demo",
+        mode: "cluster",
+      }),
     ).toBe(false);
     expect(isTunnelFrame({ type: "register", root: false })).toBe(false);
     expect(isTunnelFrame({ type: "register", root: null })).toBe(false);

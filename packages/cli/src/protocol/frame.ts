@@ -7,10 +7,13 @@ export type BasicAuthConfig = {
   readonly username?: string;
 };
 
+export type RouteMode = "single" | "cluster";
+
 export type RegisterFrame = {
   readonly type: "register";
   readonly root?: true;
   readonly subdomain?: string;
+  readonly mode?: RouteMode;
   readonly token?: string;
   readonly basicAuth?: BasicAuthConfig;
 };
@@ -18,6 +21,8 @@ export type RegisterFrame = {
 export type RegisteredFrame = {
   readonly type: "registered";
   readonly subdomain?: string;
+  readonly mode?: RouteMode;
+  readonly replicas?: number;
 };
 
 export type OpenFrame = {
@@ -102,6 +107,25 @@ const isDirection = (value: unknown): value is DataFrame["direction"] => {
   return value === "request" || value === "response";
 };
 
+const isRouteMode = (value: unknown): value is RouteMode => {
+  return value === "single" || value === "cluster";
+};
+
+const hasOptionalRouteMode = (
+  value: unknown,
+): value is RouteMode | undefined => {
+  return value === undefined || isRouteMode(value);
+};
+
+const hasOptionalPositiveInteger = (
+  value: unknown,
+): value is number | undefined => {
+  return (
+    value === undefined ||
+    (typeof value === "number" && Number.isInteger(value) && value >= 1)
+  );
+};
+
 const isBase64 = (value: unknown): value is string => {
   return (
     typeof value === "string" &&
@@ -115,6 +139,8 @@ type CandidateFrame = {
   readonly type?: unknown;
   readonly root?: unknown;
   readonly subdomain?: unknown;
+  readonly mode?: unknown;
+  readonly replicas?: unknown;
   readonly token?: unknown;
   readonly basicAuth?: unknown;
   readonly streamId?: unknown;
@@ -159,13 +185,16 @@ export const isTunnelFrame = (value: unknown): value is TunnelFrame => {
         (frame.root === undefined || frame.root === true) &&
         !(frame.root === true && frame.subdomain !== undefined) &&
         (frame.subdomain === undefined || isTunnelSubdomain(frame.subdomain)) &&
+        hasOptionalRouteMode(frame.mode) &&
         hasOptionalString(frame.token) &&
         (frame.basicAuth === undefined || isBasicAuthConfig(frame.basicAuth))
       );
     case "registered":
       return (
         !hasRemovedNameField &&
-        (frame.subdomain === undefined || isTunnelSubdomain(frame.subdomain))
+        (frame.subdomain === undefined || isTunnelSubdomain(frame.subdomain)) &&
+        hasOptionalRouteMode(frame.mode) &&
+        hasOptionalPositiveInteger(frame.replicas)
       );
     case "open":
       return (
