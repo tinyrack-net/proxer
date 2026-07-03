@@ -10,6 +10,7 @@ WORKDIR /workspace
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches patches
 COPY packages/cli/package.json packages/cli/package.json
 COPY packages/tools/package.json packages/tools/package.json
 # The workspace-local proxer-tools binary points at packages/tools/src/cli.ts.
