@@ -2,7 +2,7 @@
   "name": "proxer",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@11.10.0",
   "scripts": {
     "dev": "pnpm run --parallel -r --filter @tinyrack/* dev",
     "build": "pnpm run -r --filter @tinyrack/* build",
