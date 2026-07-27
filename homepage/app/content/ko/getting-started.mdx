@@ -1,0 +1,128 @@
+---
+title: 시작하기
+description: Proxer를 설치하고 로컬 HTTP 서비스를 공개합니다.
+section: overview
+order: 2
+---
+
+import { TRAlert } from "@tinyrack/ui/components/alert";
+
+이 문서는 가장 흔한 구성을 기준으로 설명합니다. 공개 서버는 인터넷 트래픽을 받고, 실제 앱은 노트북이나 사설망 장비에서 실행됩니다. 사설망 쪽 머신은 공개 서버로 나가는 연결만 만들면 됩니다.
+
+## 준비물
+
+- HTTP/WebSocket 트래픽을 받을 수 있는 공개 머신 또는 reverse proxy.
+- 공개할 로컬 HTTP 서비스.
+
+## 설치
+
+
+## Windows
+
+    [GitHub Releases](https://github.com/tinyrack-net/proxer/releases)에서 Windows용 단일 실행 파일을 내려받습니다.
+
+    ```powershell
+    proxer.exe --version
+    ```
+
+  
+## macOS / Linux
+
+    ```bash
+    brew install tinyrack-net/tap/proxer
+    ```
+
+  
+  
+## Docker
+
+    ```bash
+    docker run --rm tinyrack/proxer --version
+    ```
+
+  
+
+
+## 서비스 하나 공개하기
+
+아래의 `wss://`와 `https://` 예시는 Proxer 앞단에서 TLS를 종료한다고 가정합니다. 보통 Caddy, Traefik, NGINX, 로드 밸런서가 TLS를 처리하고, Proxer로는 loopback 또는 사설 네트워크를 통해 HTTP/WebSocket 트래픽을 넘깁니다.
+
+
+
+1. **공개 서버 시작**
+
+   공개 트래픽을 받을 머신에서 실행합니다.
+
+   ```bash
+   proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+   ```
+
+   같은 포트에서 공개 요청과 터널 제어 WebSocket을 모두 처리합니다.
+
+2. **로컬 앱 시작**
+
+   클라이언트 머신에서 HTTP 서비스를 하나 띄웁니다. 확인용으로는 Python 서버면 충분합니다.
+
+   ```bash
+   python3 -m http.server 3000 --bind 127.0.0.1
+   ```
+
+3. **자동 서브도메인 경로 등록**
+
+   `--subdomain`을 생략하면 서버가 임의 서브도메인을 할당합니다.
+
+   ```bash
+   proxer http 3000 \
+     --server wss://your-server.example.com \
+     --token dev-token
+   ```
+
+4. **할당된 호스트 호출**
+
+   클라이언트가 출력한 `subdomain: px-...` 값과 public URL을 사용합니다.
+
+   ```bash
+   curl https://px-k7m3q9t2ab.your-server.example.com/
+   ```
+
+5. **서브도메인 경로 등록**
+
+   이름이 있는 경로가 필요하면 `--subdomain`을 사용합니다.
+
+   ```bash
+   proxer http 3000 \
+     --server wss://your-server.example.com \
+     --subdomain demo \
+     --token dev-token
+   ```
+
+6. **서브도메인 호스트 호출**
+
+   ```bash
+   curl https://demo.your-server.example.com/
+   ```
+
+   루트 호스트가 필요할 때만 `--subdomain @`를 사용하세요. 이 모드는 서버가 `--domain`으로 시작된 경우에 가장 명확하게 동작합니다.
+
+
+
+<TRAlert.Root variant="warning">
+  `dev-token`은 데모와 로컬 테스트용입니다. 실제 배포에서는 긴 난수 값을 `PROXER_TOKEN`, 컨테이너 secret, Kubernetes secret, 또는 플랫폼의 secret 저장소로 전달하세요.
+</TRAlert.Root>
+
+<TRAlert.Root variant="info">
+  로컬 테스트에서는 `Host` 헤더가 어느 터널로 갈지 결정합니다. 운영 환경에서는 DNS와 reverse proxy가 원래 호스트를 보존해야 합니다.
+</TRAlert.Root>
+
+## 로컬에서만 테스트하기
+
+아직 DNS가 없다면 한 머신에서 전부 실행하고 `Host` 헤더만 직접 넣어도 됩니다.
+
+```bash
+python3 -m http.server 3000 --bind 127.0.0.1
+proxer server --listen 127.0.0.1:8080 --domain proxy.localhost --token dev-token
+proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+curl -H 'Host: demo.proxy.localhost' http://127.0.0.1:8080/
+```
+
+요청이 어떻게 흐르는지는 [동작 방식](/ko/guides/how-it-works/)에서, Traefik/Caddy/NGINX 뒤에 둘 때의 주의점은 [라우팅과 신뢰 프록시](/ko/guides/routing/)에서 확인하세요.

@@ -1,0 +1,49 @@
+---
+title: proxer skill install
+description: コーディングエージェント向けのローカルProxerメモをインストールします。
+section: reference
+order: 3
+---
+
+`proxer skill install <directory>`は、コーディングエージェントがローカルのコマンドメモとして読める`proxer.md`を書き込みます。任意の機能で、トンネルサーバーやクライアントの動作には影響しません。
+
+## 使い方
+
+```bash
+proxer skill install <directory>
+```
+
+このコマンドは次のファイルを書き込みます。
+
+```text
+<directory>/proxer.md
+```
+
+## オプション
+
+- `--dry-run`: ディレクトリやファイルを作らず、対象パスだけを表示します。
+- `--force`: 既存の`proxer.md`ファイルを上書きします。
+
+このコマンドに環境変数はありません。
+
+## 例
+
+インストール先を確認します。
+
+```bash
+proxer skill install ./skills --dry-run
+```
+
+ファイルをインストールします。
+
+```bash
+proxer skill install ./skills
+```
+
+既存ファイルを更新します。
+
+```bash
+proxer skill install ./skills --force
+```
+
+`proxer.md`がすでにある場合、`--force`を指定しない限り失敗します。

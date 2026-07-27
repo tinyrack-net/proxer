@@ -5,9 +5,9 @@
 **A small reverse-tunnel CLI for putting a private HTTP service behind a public URL you control.**
 
 [![CI](https://github.com/tinyrack-net/proxer/actions/workflows/pipeline.yml/badge.svg)](https://github.com/tinyrack-net/proxer/actions/workflows/pipeline.yml)
-[![npm](https://img.shields.io/npm/v/@tinyrack/proxer)](https://www.npmjs.com/package/@tinyrack/proxer)
+[![GitHub Release](https://img.shields.io/github/v/release/tinyrack-net/proxer)](https://github.com/tinyrack-net/proxer/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D24-brightgreen)](https://nodejs.org/)
+[![Dart](https://img.shields.io/badge/dart-%3E%3D3.12-blue)](https://dart.dev/)
 
 [Quick Start](#quick-start) · [Examples](#examples) · [Packaging](#standalone-executables)
 
@@ -34,14 +34,16 @@ Proxer is for the familiar problem where a service is running on a laptop, mini 
 ## Installation
 
 ```bash
-npm install -g @tinyrack/proxer
-```
-
-```bash
 brew install tinyrack-net/tap/proxer
 ```
 
-Prebuilt Linux, macOS, and Windows executables are published on the [GitHub Releases](https://github.com/tinyrack-net/proxer/releases) page.
+On Windows, install with WinGet:
+
+```powershell
+winget install tinyrack.proxer
+```
+
+Prebuilt Linux, macOS, and Windows executables are also published on the [GitHub Releases](https://github.com/tinyrack-net/proxer/releases) page.
 
 The OCI image is published to Docker Hub (`tinyrack/proxer`) and GHCR (`ghcr.io/tinyrack-net/proxer`):
 
@@ -407,19 +409,16 @@ The command writes `<directory>/proxer.md`. It does not contact a network servic
 ## Development
 
 ```bash
-mise exec -- pnpm install
-mise exec -- pnpm run build
-mise exec -- pnpm run typecheck
-mise exec -- pnpm run test
-mise exec -- pnpm run format:check
+dart pub get
+dart run packages/tools/bin/cli.dart validate
 ```
 
 Run the CLI from this repository:
 
 ```bash
-mise exec -- pnpm --filter @tinyrack/proxer start --help
-mise exec -- pnpm --filter @tinyrack/proxer start server --listen 127.0.0.1:8080 --token dev-token
-mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+dart run packages/cli/bin/proxer.dart --help
+dart run packages/cli/bin/proxer.dart server --listen 127.0.0.1:8080 --token dev-token
+dart run packages/cli/bin/proxer.dart http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
 ```
 
 ## Standalone Executables
@@ -427,11 +426,11 @@ mise exec -- pnpm --filter @tinyrack/proxer start http 3000 --server ws://127.0.
 Build and smoke-test the standalone executable:
 
 ```bash
-mise exec -- pnpm run pkg:build
-mise exec -- pnpm run pkg:smoke -- --skip-build
+dart compile exe packages/cli/bin/proxer.dart -o proxer
+dart run packages/tools/bin/cli.dart smoke --executable-path proxer
 ```
 
-The default build writes `packages/cli/dist/pkg/proxer`. Release builds produce Linux, macOS, and Windows artifacts.
+Release builds compile native Linux, macOS, and Windows artifacts on their target operating systems.
 
 ## License
 
