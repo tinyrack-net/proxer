@@ -30,6 +30,11 @@ void main() {
       expect(source, contains('dart compile exe'));
       expect(source, contains('docker-smoke:'));
       expect(source, contains('publish-docker:'));
+      expect(source, contains("'tinyrack.proxer'"));
+      expect(source, contains("'CN=tinyrack'"));
+      expect(source, contains("'tinyrack'"));
+      expect(source, isNot(contains('secrets.MSIX_IDENTITY_NAME')));
+      expect(source, isNot(contains('secrets.MSIX_PUBLISHER')));
       expect(source, isNot(contains('node24-')));
       expect(source, isNot(contains('autocomplete-shell-smoke')));
     },

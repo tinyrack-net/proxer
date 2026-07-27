@@ -169,9 +169,11 @@ jobs:
         if: matrix.msixarch && startsWith(github.ref, 'refs/tags/v')
         shell: powershell
         env:
-          MSIX_IDENTITY_NAME: ${{ secrets.MSIX_IDENTITY_NAME }}
-          MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
-          MSIX_PUBLISHER_DISPLAY_NAME: ${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME ||
+            'tinyrack.proxer' }}
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=tinyrack' }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME ||
+            'tinyrack' }}
         run: dart run bin/cli.dart msix build --arch ${{ matrix.msixarch }}
           --executable-path packages/cli/${{ matrix.asset }}
         working-directory: packages/tools
@@ -180,7 +182,8 @@ jobs:
         if: matrix.msixarch == 'x64' && startsWith(github.ref, 'refs/tags/v')
         shell: powershell
         env:
-          MSIX_IDENTITY_NAME: ${{ secrets.MSIX_IDENTITY_NAME }}
+          MSIX_IDENTITY_NAME: ${{ vars.MSIX_IDENTITY_NAME ||
+            'tinyrack.proxer' }}
         run: |
           $existing = Get-AppxPackage -Name "$env:MSIX_IDENTITY_NAME" -ErrorAction SilentlyContinue
           if ($existing) {
