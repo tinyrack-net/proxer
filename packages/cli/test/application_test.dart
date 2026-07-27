@@ -1,4 +1,5 @@
 import 'package:proxer/src/application.dart';
+import 'package:proxer/src/util/version.dart';
 import 'package:test/test.dart';
 
 import 'helpers/capture_stream.dart';
@@ -22,7 +23,7 @@ void main() {
   test('reports the native package version', () async {
     final result = await _run(['--version']);
     expect(result.code, 0);
-    expect(result.stdout, 'proxer 0.13.0\n');
+    expect(result.stdout, 'proxer $currentVersion\n');
     expect(result.stderr, '');
   });
 
