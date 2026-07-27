@@ -1,0 +1,128 @@
+---
+title: Getting Started
+description: Install Proxer and expose a local HTTP service.
+section: overview
+order: 2
+---
+
+import { TRAlert } from "@tinyrack/ui/components/alert";
+
+This walkthrough uses the common setup: a cheap public server receives traffic, while a laptop or private machine runs the actual app. The private machine only needs outbound access to the public server.
+
+## Prerequisites
+
+- A public machine or reverse proxy that can receive HTTP/WebSocket traffic.
+- A local HTTP service to expose.
+
+## Install
+
+
+## Windows
+
+    Download a standalone Windows executable from [GitHub Releases](https://github.com/tinyrack-net/proxer/releases).
+
+    ```powershell
+    proxer.exe --version
+    ```
+
+  
+## macOS / Linux
+
+    ```bash
+    brew install tinyrack-net/tap/proxer
+    ```
+
+  
+  
+## Docker
+
+    ```bash
+    docker run --rm tinyrack/proxer --version
+    ```
+
+  
+
+
+## Expose one service
+
+The public `wss://` and `https://` examples assume TLS terminates in front of Proxer, usually at Caddy, Traefik, NGINX, or a load balancer. That proxy should forward HTTP and WebSocket traffic to Proxer over loopback or a private network.
+
+
+
+1. **Start the public server**
+
+   Run this on the machine that receives public traffic:
+
+   ```bash
+   proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+   ```
+
+   The same port handles public requests and the tunnel control WebSocket.
+
+2. **Start a local app**
+
+   On the client machine, start any HTTP service. Python is enough for a smoke test:
+
+   ```bash
+   python3 -m http.server 3000 --bind 127.0.0.1
+   ```
+
+3. **Register an auto-assigned route**
+
+   Omit `--subdomain` when you want Proxer to assign a random subdomain:
+
+   ```bash
+   proxer http 3000 \
+     --server wss://your-server.example.com \
+     --token dev-token
+   ```
+
+4. **Call the assigned host**
+
+   The client prints a `subdomain: px-...` line and the full public URL. Use that host:
+
+   ```bash
+   curl https://px-k7m3q9t2ab.your-server.example.com/
+   ```
+
+5. **Register a subdomain route**
+
+   Use `--subdomain` when you want a named route:
+
+   ```bash
+   proxer http 3000 \
+     --server wss://your-server.example.com \
+     --subdomain demo \
+     --token dev-token
+   ```
+
+6. **Call the subdomain host**
+
+   ```bash
+   curl https://demo.your-server.example.com/
+   ```
+
+   Use `--subdomain @` only when you intentionally want the root host itself to reach the client. This is intended for servers started with `--domain`.
+
+
+
+<TRAlert.Root variant="warning">
+  `dev-token` is only for demos and local testing. In a real deployment, set a long random value with `PROXER_TOKEN`, a container secret, a Kubernetes secret, or your platform's secret store.
+</TRAlert.Root>
+
+<TRAlert.Root variant="info">
+  During local testing, the `Host` header decides which tunnel receives the request. In production, DNS and your reverse proxy should preserve the original host.
+</TRAlert.Root>
+
+## Local-only test
+
+If you do not have DNS ready yet, keep everything on one machine and pass the host header yourself:
+
+```bash
+python3 -m http.server 3000 --bind 127.0.0.1
+proxer server --listen 127.0.0.1:8080 --domain proxy.localhost --token dev-token
+proxer http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+curl -H 'Host: demo.proxy.localhost' http://127.0.0.1:8080/
+```
+
+Read [How It Works](/en/guides/how-it-works/) for the request flow, or [Routing and Trusted Proxies](/en/guides/routing/) before putting Proxer behind Traefik, Caddy, NGINX, or a load balancer.

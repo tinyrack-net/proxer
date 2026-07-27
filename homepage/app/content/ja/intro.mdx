@@ -1,0 +1,40 @@
+---
+title: Proxer
+description: プライベートなHTTP、SSE、WebSocketサービス向けのセルフホスト型リバーストンネルです。
+section: overview
+order: 1
+---
+
+プライベートなマシンで動いているサービスに、安定した公開URLが必要になることがあります。ノートPCの開発サーバー、ホームラボのダッシュボード、小さな事務所の内側にある社内ツールなどです。そのためだけに、内側のネットワークへ入るポートを開けたくないこともあります。
+
+Proxerは、公開エンドポイントを自分で持つためのリバーストンネルです。公開Proxerサーバーを1つ動かし、プライベート側からクライアントがWebSocketで接続します。クライアントはホスト経路を登録し、公開HTTP、Server-Sent Events、WebSocketトラフィックを自分のマシンの`127.0.0.1:<port>`へ転送します。
+
+## 向いている用途
+
+- NATやファイアウォールの内側にあるHTTPサービスへ公開URLを付けたい。
+- トンネルサーバーを自分のVPS、ホームラボの入口、会社のインフラ内で動かしたい。
+- HTTPストリーミング、SSE、WebSocketアップグレードを通したい。
+- `proxy.example.com`と`demo.proxy.example.com`のように、ホスト名で経路をはっきり分けたい。
+
+## ルーティングは推測しません
+
+`--domain proxy.example.com`を設定した場合、`--subdomain`なしのクライアントには`px-k7m3q9t2ab.proxy.example.com`のようなランダムなサブドメインが割り当てられます。`--subdomain demo`を指定したクライアントは`demo.proxy.example.com`を、`--subdomain @`を指定したクライアントはルートホスト`proxy.example.com`を担当します。
+
+入ってきたホストが登録済み経路と合わない場合、Proxerは`404`を返します。接続中のクライアントが1つだけでも、そこへ勝手に送りません。少し不便に見えますが、複数のトンネルで同じサーバーを使うときに挙動が読みやすくなります。
+
+## 基本の形
+
+```bash
+proxer server --listen 0.0.0.0:8080 --domain your-server.example.com --token dev-token
+
+proxer http 3000 \
+  --server wss://your-server.example.com \
+  --subdomain demo \
+  --token dev-token
+
+curl https://demo.your-server.example.com/
+```
+
+実運用では`dev-token`ではなく、長いランダムトークンを作り、`PROXER_TOKEN`やプラットフォームのsecret保存先から渡してください。
+
+最初から試す場合は[はじめに](/ja/getting-started/)へ進んでください。

@@ -1,0 +1,95 @@
+---
+title: ルーティングと信頼済みプロキシ
+description: ホストルーティング、ルート経路、サブドメイン経路、forwardedヘッダーを扱います。
+section: guides
+order: 2
+---
+
+Proxerはホスト名でルーティングします。普通の話に見えますが、DNS、TLS、reverse proxyの背後にトンネルを置くときに一番ずれやすい部分です。
+
+## ルート経路とサブドメイン経路
+
+公開ルートドメインを指定してサーバーを起動します。
+
+```bash
+proxer server --listen 0.0.0.0:8080 --domain proxy.example.com --token dev-token
+```
+
+`--subdomain`なしのクライアントには、サーバーがランダムなサブドメインを割り当てます。
+
+```bash
+proxer http 3000 --server wss://proxy.example.com --token dev-token
+```
+
+クライアントは`https://px-k7m3q9t2ab.proxy.example.com`のようなpublic URLを表示します。同じ実行中の再接続では、この割り当てを使い続けます。
+
+ルート経路が必要な場合だけ`--subdomain @`を使います。
+
+```bash
+proxer http 3000 --server wss://proxy.example.com --subdomain @ --token dev-token
+```
+
+`proxy.example.com`へのリクエストは、このルート経路のクライアントへ行きます。ルート経路は、サーバーを`--domain`付きで起動している場合に最も分かりやすく動きます。`--domain`がない場合、Proxerはリクエストホストの最初のlabelをサブドメイン経路として扱います。
+
+`--subdomain demo`を指定したクライアントは`demo.proxy.example.com`を登録します。
+
+```bash
+proxer http 3000 --server wss://proxy.example.com --subdomain demo --token dev-token
+```
+
+不明なホストは`404`を返します。`localhost`やIPアドレス宛てのリクエストも、接続中のクライアントへ自動ルーティングされません。
+
+## ローカルテスト
+
+DNSなしで試す場合は、ホストヘッダーを明示します。
+
+```bash
+curl -H 'Host: demo.proxy.example.com' http://127.0.0.1:8080/
+```
+
+ホストヘッダーが違うと、Proxerはどのトンネルへ送るべきか判断できません。
+
+## Reverse proxy
+
+インターネットに公開するサーバーでは、Caddy、Traefik、NGINX、ロードバランサーなどのreverse proxyでTLSを終端する構成がよく使われます。そのproxyからProxerへ、loopbackまたはプライベートネットワーク経由でHTTP/WebSocketトラフィックを渡します。
+
+元のホスト名は保持してください。Traefikでは通常、`passHostHeader`を有効にしたデフォルトのままで大丈夫です。
+
+次に、どのTCP peerからのforwardedヘッダーを信頼するかをProxerへ伝えます。
+
+```bash
+proxer server \
+  --listen 0.0.0.0:8080 \
+  --domain proxy.example.com \
+  --trusted-proxy loopback \
+  --trusted-proxy private \
+  --token "$PROXER_TOKEN"
+```
+
+環境変数では次の形です。
+
+```bash
+PROXER_TRUSTED_PROXIES=loopback,private,10.42.0.0/16 proxer server --domain proxy.example.com
+```
+
+信頼済みプロキシ値には、`loopback`、`private`、IP literal、CIDRレンジを使えます。
+
+peerを信頼すると、Proxerはそのpeerから来た`X-Forwarded-For`、`X-Real-IP`、`X-Forwarded-Host`、`X-Forwarded-Proto`を使うことがあります。reverse proxyは、外部クライアントから届いた`X-Forwarded-*`と`X-Real-IP`ヘッダーをProxerへ渡す前に、必ず上書きまたは削除してください。自分で管理していないproxyアドレスは信頼しないでください。
+
+信頼済みプロキシを設定しない場合、Proxerはルーティング判断にforwarded host、protocol、client IPヘッダーを使いません。
+
+## Domainを設定しない場合
+
+公開運用では`--domain`を設定してください。設定しない場合、Proxerはリクエストホストの最初のlabelからサブドメイン経路を取り出します。ローカル実験には使えますが、実際のDNSやreverse proxyが入ると混乱しやすくなります。
+
+## 予約パス
+
+内部エンドポイントはすべて`/__proxer__/`配下です。
+
+```text
+/__proxer__/control
+/__proxer__/health/live
+/__proxer__/health/ready
+```
+
+これらのパスをアプリへ送らないでください。公開Proxerサーバーがアプリのルーティングより先に処理します。

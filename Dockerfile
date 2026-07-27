@@ -1,36 +1,22 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-bookworm-slim AS build
-
-ENV PNPM_HOME=/pnpm
-ENV PATH=$PNPM_HOME:$PATH
+FROM dart:3.12.2-sdk AS build
 
 WORKDIR /workspace
 
-RUN corepack enable
+COPY pubspec.yaml pubspec.lock analysis_options.yaml ./
+COPY packages/cli/pubspec.yaml packages/cli/pubspec.yaml
+COPY packages/tools/pubspec.yaml packages/tools/pubspec.yaml
+RUN dart pub get
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY patches patches
-COPY packages/cli/package.json packages/cli/package.json
-COPY packages/tools/package.json packages/tools/package.json
-# The workspace-local proxer-tools binary points at packages/tools/src/cli.ts.
-# Copy the tools source before install so pnpm can create the workspace bin link.
-COPY packages/tools/src packages/tools/src
-RUN pnpm install --frozen-lockfile
-
-COPY . .
-
-ARG TARGETARCH=amd64
-RUN set -eux; \
-  case "$TARGETARCH" in \
-    amd64) pkg_arch=x64 ;; \
-    arm64) pkg_arch=arm64 ;; \
-    *) echo "Unsupported Docker target architecture: $TARGETARCH" >&2; exit 1 ;; \
-  esac; \
-  pnpm --filter @tinyrack/proxer run pkg:build -- --target "node24-linux-${pkg_arch}"; \
-  cp packages/cli/dist/pkg/proxer /tmp/proxer
+COPY packages/cli packages/cli
+RUN dart compile exe packages/cli/bin/proxer.dart -o /tmp/proxer
 
 FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build --chmod=755 /tmp/proxer /usr/local/bin/proxer
 

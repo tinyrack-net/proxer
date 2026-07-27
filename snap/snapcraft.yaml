@@ -1,9 +1,10 @@
 name: proxer
 base: core24
 version: git
-summary: Reverse tunnel CLI for HTTP, SSE, and WebSocket traffic.
+summary: Self-hosted reverse tunnel for HTTP, SSE, and WebSocket services.
 description: |
-  Proxer creates client-initiated reverse tunnels for local HTTP services.
+  Proxer exposes private HTTP services through a public server while preserving
+  streaming, Server-Sent Events, and WebSocket traffic.
 confinement: classic
 grade: stable
 

@@ -1,0 +1,8 @@
+{"type":"register","subdomain":"demo","mode":"cluster","token":"secret","basicAuth":{"password":"pass","username":"user"}}
+{"type":"registered","subdomain":"demo","mode":"cluster","replicas":2}
+{"type":"open","streamId":"stream-1","kind":"http","method":"POST","path":"/events?q=1","headers":{"host":"demo.example.com","x-test":["one","two"]}}
+{"type":"headers","streamId":"stream-1","status":201,"headers":{"content-type":"text/plain"}}
+{"type":"data","streamId":"stream-1","direction":"response","data":"aGVsbG8="}
+{"type":"end","streamId":"stream-1","direction":"response"}
+{"type":"error","streamId":"stream-1","message":"local connection failed"}
+{"type":"close","streamId":"stream-1"}

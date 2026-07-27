@@ -1,0 +1,49 @@
+---
+title: proxer skill install
+description: 코딩 에이전트가 읽을 로컬 Proxer 참고 파일을 설치합니다.
+section: reference
+order: 3
+---
+
+`proxer skill install <directory>`는 코딩 에이전트가 로컬 명령어 메모로 읽을 수 있는 `proxer.md` 파일을 작성합니다. 선택 기능이며 터널 서버나 클라이언트 동작에는 영향을 주지 않습니다.
+
+## 사용법
+
+```bash
+proxer skill install <directory>
+```
+
+명령은 다음 파일을 작성합니다.
+
+```text
+<directory>/proxer.md
+```
+
+## 옵션
+
+- `--dry-run`: 디렉터리나 파일을 만들지 않고 대상 경로만 출력합니다.
+- `--force`: 기존 `proxer.md` 파일을 덮어씁니다.
+
+이 명령에는 환경변수가 없습니다.
+
+## 예시
+
+설치 위치를 미리 확인합니다.
+
+```bash
+proxer skill install ./skills --dry-run
+```
+
+파일을 설치합니다.
+
+```bash
+proxer skill install ./skills
+```
+
+기존 파일을 갱신합니다.
+
+```bash
+proxer skill install ./skills --force
+```
+
+`proxer.md`가 이미 있으면 `--force`를 전달하지 않는 한 실패합니다.

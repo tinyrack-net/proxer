@@ -2,26 +2,27 @@
 
 ## Project Overview
 
-**Proxer** is a Node.js CLI project for reverse-tunnel workflows.
+**Proxer** is a Dart CLI project for reverse-tunnel workflows.
 
-- **Main Technologies:** Node.js (>=24), TypeScript, pnpm (Monorepo), Vitest, Biome.
-- **Architecture:** A pnpm workspace with the CLI package in `packages/cli`.
+- **Main Technologies:** Dart (>=3.12), cliweave, package:test.
+- **Architecture:** A Dart workspace with packages in `packages/cli` and `packages/tools`. The standalone React Router homepage lives in `homepage`.
 
 ## Mandatory Validation Loop
 
 Run the validation loop after changes:
 
-- **Build:** `pnpm run build`
-- **Typecheck:** `pnpm run typecheck`
-- **Test:** `pnpm run test`
-- **Lint/Format Check:** `pnpm run format:check`
+- **All Dart checks:** `dart run packages/tools/bin/cli.dart validate`
+- **Homepage:** `pnpm run validate` from `homepage`
 
 ## Workspace Structure
 
-- `packages/cli`: The `@tinyrack/proxer` CLI package.
+- `packages/cli`: The Proxer native CLI.
+- `packages/tools`: Dart release, packaging, and validation tooling.
+- `homepage`: React Router documentation site.
 
 ## CLI Development
 
-- Use `#app/*` imports for internal CLI source imports.
-- Keep the tunnel implementation minimal until product behavior is specified.
-- Unit tests live beside source files as `src/**/*.test.ts`.
+- Keep command definitions and output in `lib/src/cli`.
+- Keep tunnel orchestration in `lib/src/services`.
+- Preserve the protocol frame contract and command output compatibility.
+- Unit and integration tests live under `packages/cli/test`.
