@@ -1,7 +1,18 @@
-name: proxer_workspace
+name: proxer
+description: Self-hosted reverse-tunnel CLI for HTTP, SSE, and WebSocket services.
+version: 0.14.0
 publish_to: none
 environment:
   sdk: ^3.12.0
-workspace:
-  - packages/cli
-  - packages/tools
+
+executables:
+  proxer: proxer
+
+dependencies:
+  cliweave: ^0.2.1
+  path: ^1.9.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  shipworld: ^0.1.2
+  test: ^1.26.0

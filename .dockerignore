@@ -12,9 +12,6 @@ dist
 homepage/build
 homepage/node_modules
 node_modules
-packages/*/.dart_tool
-packages/*/coverage
-packages/*/dist
-packages/cli/proxer-e2e*
-packages/cli/proxer-test*
+proxer-e2e*
+proxer-test*
 pnpm-debug.log*

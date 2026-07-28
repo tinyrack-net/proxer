@@ -410,15 +410,15 @@ The command writes `<directory>/proxer.md`. It does not contact a network servic
 
 ```bash
 dart pub get
-dart run packages/tools/bin/cli.dart validate
+dart run tool/validate.dart
 ```
 
 Run the CLI from this repository:
 
 ```bash
-dart run packages/cli/bin/proxer.dart --help
-dart run packages/cli/bin/proxer.dart server --listen 127.0.0.1:8080 --token dev-token
-dart run packages/cli/bin/proxer.dart http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
+dart run bin/proxer.dart --help
+dart run bin/proxer.dart server --listen 127.0.0.1:8080 --token dev-token
+dart run bin/proxer.dart http 3000 --server ws://127.0.0.1:8080 --subdomain demo --token dev-token
 ```
 
 ## Standalone Executables
@@ -426,8 +426,8 @@ dart run packages/cli/bin/proxer.dart http 3000 --server ws://127.0.0.1:8080 --s
 Build and smoke-test the standalone executable:
 
 ```bash
-dart compile exe packages/cli/bin/proxer.dart -o proxer
-dart run packages/tools/bin/cli.dart smoke --executable-path proxer
+dart compile exe bin/proxer.dart -o proxer
+dart run tool/smoke.dart --executable-path proxer
 ```
 
 Release builds compile native Linux, macOS, and Windows artifacts on their target operating systems.
