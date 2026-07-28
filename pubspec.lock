@@ -58,13 +58,13 @@ packages:
     source: hosted
     version: "0.2.0"
   cliweave:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: cliweave
-      sha256: "8114ce4705ac1af3a8bd4a05aa1cf16c935d4a9df6de3242a80d52fb9a598666"
+      sha256: "62bb155bd9214bbf7680c3f50546185ec4045eea396e174f5aa29bf2a0a1b10f"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.1"
+    version: "0.2.1"
   collection:
     dependency: transitive
     description:
@@ -154,7 +154,7 @@ packages:
     source: hosted
     version: "1.0.5"
   lints:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: lints
       sha256: "12f842a479589fea194fe5c5a3095abc7be0c1f2ddfa9a0e76aed1dbd26a87df"
@@ -210,7 +210,7 @@ packages:
     source: hosted
     version: "3.0.0"
   path:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: path
       sha256: "75cca69d1490965be98c73ceaea117e8a04dd21217b37b292c9ddbec0d955bc5"
@@ -273,6 +273,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.0"
+  shipworld:
+    dependency: "direct dev"
+    description:
+      name: shipworld
+      sha256: "87e3bb7f8924c330f054d9fff99303efb76399b3afc2fdb47aa73f62c47948b2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.2"
   source_map_stack_trace:
     dependency: transitive
     description:
@@ -330,7 +338,7 @@ packages:
     source: hosted
     version: "1.2.2"
   test:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: test
       sha256: "0d5ba5602ec3baa28c8ce365e1efc5575969c765f45c554a3e167dc7945b9c30"

@@ -1,0 +1,45 @@
+schema: 1
+remote: origin
+batch-commit: "release: {targets}"
+
+targets:
+  proxer:
+    kind: cli-application
+    root: .
+    version:
+      source: pubspec.yaml
+      synchronized:
+        - type: dart-constant
+          path: lib/src/util/version.g.dart
+    tag: "v{version}"
+    commit: "release: v{version}"
+    branch: main
+    payload:
+      kind: executable
+      launcher: proxer
+    product:
+      name: proxer
+      display-name: proxer
+      description: Self-hosted reverse tunnel for HTTP, SSE, and WebSocket services
+      executable: proxer
+      homepage: https://proxer.tinyrack.net
+      repository: tinyrack-net/proxer
+    windows:
+      application-id: proxer
+      executable: proxer.exe
+      background-color: "#102A43"
+      identity:
+        name-env: MSIX_IDENTITY_NAME
+        publisher-env: MSIX_PUBLISHER
+        publisher-display-name-env: MSIX_PUBLISHER_DISPLAY_NAME
+        display-name-env: MSIX_DISPLAY_NAME
+    macos:
+      entitlements: entitlements.plist
+    linux:
+      icon: homepage/public/favicon.svg
+      categories:
+        - Utility
+      terminal: true
+    homebrew:
+      formula-class: Proxer
+      artifact-prefix: proxer

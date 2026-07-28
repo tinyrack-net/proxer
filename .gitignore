@@ -2,10 +2,10 @@ node_modules
 dist
 coverage
 .dart_tool
-packages/*/.dart_tool
-packages/cli/proxer-e2e
-packages/cli/proxer-e2e.exe
-packages/cli/proxer-test.exe
+dist/
+proxer-e2e
+proxer-e2e.exe
+proxer-test.exe
 homepage/build
 homepage/.react-router
 .env

@@ -4,25 +4,31 @@
 
 **Proxer** is a Dart CLI project for reverse-tunnel workflows.
 
-- **Main Technologies:** Dart (>=3.12), cliweave, package:test.
-- **Architecture:** A Dart workspace with packages in `packages/cli` and `packages/tools`. The standalone React Router homepage lives in `homepage`.
+- **Main Technologies:** Dart (>=3.12), cliweave, shipworld, package:test.
+- **Architecture:** A single-package Dart CLI rooted at the repository (`bin`, `lib`, `test`, `tool`). Release and packaging are driven by `shipworld` via `shipworld.yaml`. The standalone React Router homepage lives in `homepage`.
 
 ## Mandatory Validation Loop
 
 Run the validation loop after changes:
 
-- **All Dart checks:** `dart run packages/tools/bin/cli.dart validate`
+- **All Dart checks:** `dart run tool/validate.dart`
 - **Homepage:** `pnpm run validate` from `homepage`
 
-## Workspace Structure
+## Project Structure
 
-- `packages/cli`: The Proxer native CLI.
-- `packages/tools`: Dart release, packaging, and validation tooling.
+- `bin`, `lib`: The Proxer native CLI.
+- `tool`: `validate.dart`, `smoke.dart`, and `build_e2e.dart`, built on shipworld primitives.
+- `shipworld.yaml`: Release, signing, and packaging configuration (MSIX, AppImage, Homebrew, macOS signing).
 - `homepage`: React Router documentation site.
+
+## Release
+
+- Version is single-sourced in `pubspec.yaml` and synchronized into `lib/src/util/version.g.dart` by shipworld.
+- Bump/commit/tag manually: `dart run shipworld:shipworld release prepare proxer=<patch|minor|major>` then `dart run shipworld:shipworld release finalize proxer --push`.
 
 ## CLI Development
 
 - Keep command definitions and output in `lib/src/cli`.
 - Keep tunnel orchestration in `lib/src/services`.
 - Preserve the protocol frame contract and command output compatibility.
-- Unit and integration tests live under `packages/cli/test`.
+- Unit and integration tests live under `test`.

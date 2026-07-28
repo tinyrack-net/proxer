@@ -50,7 +50,7 @@ jobs:
           path: ~/.pub-cache
           key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - name: Validate Dart static checks
-        run: dart run packages/tools/bin/cli.dart validate dart-static
+        run: dart run tool/validate.dart dart-static
 
   dart-test:
     name: Dart Test (${{ matrix.os }})
@@ -73,7 +73,7 @@ jobs:
           path: ~/.pub-cache
           key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - name: Validate Dart tests
-        run: dart run packages/tools/bin/cli.dart validate dart-tests
+        run: dart run tool/validate.dart dart-tests
 
   homepage:
     name: Homepage
@@ -142,7 +142,6 @@ jobs:
 
       - name: Compile executable
         run: dart compile exe bin/proxer.dart -o ${{ matrix.asset }}
-        working-directory: packages/cli
 
       - name: Sign binary (macOS)
         if: startsWith(matrix.target, 'macos') && (github.ref ==
@@ -155,15 +154,14 @@ jobs:
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
         run: |
-          dart run bin/cli.dart sign macos \
-            --executable-path packages/cli/${{ matrix.asset }} \
+          dart run shipworld:shipworld package macos sign proxer \
+            --config shipworld.yaml \
+            --input ${{ matrix.asset }} \
             ${{ !startsWith(github.ref, 'refs/tags/v') && '--skip-notarize' || '' }}
-        working-directory: packages/tools
 
       - name: Smoke test binary
-        run: dart run bin/cli.dart smoke --executable-path
-          packages/cli/${{ matrix.asset }}
-        working-directory: packages/tools
+        run: dart run tool/smoke.dart --executable-path
+          ${{ matrix.asset }}
 
       - name: Build MSIX package (Windows)
         if: matrix.msixarch && startsWith(github.ref, 'refs/tags/v')
@@ -174,9 +172,11 @@ jobs:
           MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=tinyrack' }}
           MSIX_PUBLISHER_DISPLAY_NAME: ${{ vars.MSIX_PUBLISHER_DISPLAY_NAME ||
             'tinyrack' }}
-        run: dart run bin/cli.dart msix build --arch ${{ matrix.msixarch }}
-          --executable-path packages/cli/${{ matrix.asset }}
-        working-directory: packages/tools
+        run: dart run shipworld:shipworld package windows msix
+          proxer --config shipworld.yaml --arch ${{ matrix.msixarch }}
+          --input ${{ matrix.asset }}
+          --output dist/pkg/proxer-win-${{ matrix.msixarch }}.msix
+          --package-root dist/msix/${{ matrix.msixarch }}
 
       - name: Smoke test MSIX alias (Windows x64)
         if: matrix.msixarch == 'x64' && startsWith(github.ref, 'refs/tags/v')
@@ -189,7 +189,7 @@ jobs:
           if ($existing) {
             Remove-AppxPackage -Package $existing.PackageFullName
           }
-          Add-AppxPackage -Register (Resolve-Path "packages/cli/dist/msix/x64/AppxManifest.xml")
+          Add-AppxPackage -Register (Resolve-Path "dist/msix/x64/AppxManifest.xml")
           try {
             proxer.exe --version
           } finally {
@@ -203,7 +203,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
-          path: packages/cli/${{ matrix.asset }}
+          path: ${{ matrix.asset }}
           if-no-files-found: error
 
       - name: Upload MSIX (Windows)
@@ -211,7 +211,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: proxer-win32-${{ matrix.msixarch }}-msix
-          path: packages/cli/dist/pkg/proxer-win-${{ matrix.msixarch }}.msix
+          path: dist/pkg/proxer-win-${{ matrix.msixarch }}.msix
           if-no-files-found: error
 
   bundle-msix:
@@ -235,21 +235,24 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: proxer-win32-x64-msix
-          path: packages/cli/dist/pkg
+          path: dist/pkg
       - name: Download Windows arm64 MSIX
         uses: actions/download-artifact@v8
         with:
           name: proxer-win32-arm64-msix
-          path: packages/cli/dist/pkg
+          path: dist/pkg
       - name: Bundle Windows MSIX packages
         shell: powershell
-        run: dart run bin/cli.dart msix bundle
-        working-directory: packages/tools
+        run: dart run shipworld:shipworld package windows
+          bundle proxer --config shipworld.yaml
+          --package-dir dist/pkg
+          --output dist/pkg/proxer-windows.msixbundle
+          --working-directory dist/msix/bundle
       - name: Upload Windows MSIX bundle
         uses: actions/upload-artifact@v7
         with:
           name: proxer-windows-msixbundle
-          path: packages/cli/dist/pkg/proxer-windows.msixbundle
+          path: dist/pkg/proxer-windows.msixbundle
           if-no-files-found: error
 
   build-appimage:
@@ -267,9 +270,11 @@ jobs:
           - os: ubuntu-latest
             artifact: proxer-linux-x64
             arch: x86_64
+            appimagetool_sha256: a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0
           - os: ubuntu-24.04-arm
             artifact: proxer-linux-arm64
             arch: aarch64
+            appimagetool_sha256: 1b00524ba8c6b678dc15ef88a5c25ec24def36cdfc7e3abb32ddcd068e8007fe
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -291,12 +296,21 @@ jobs:
       - name: Restore executable permissions
         shell: bash
         run: chmod +x release-bin/proxer-*
+      - name: Install verified appimagetool
+        shell: bash
+        run: |
+          curl --fail --location --output appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage"
+          echo "${{ matrix.appimagetool_sha256 }}  appimagetool" | sha256sum --check -
+          chmod +x appimagetool
       - name: Build AppImage
-        run: dart run bin/cli.dart appimage build
-          --executable-path release-bin/${{ matrix.artifact }}
-          --output-path ${{ matrix.artifact }}.AppImage
+        env:
+          APPIMAGETOOL_PATH: ${{ github.workspace }}/appimagetool
+        run: dart run shipworld:shipworld package linux
+          appimage proxer --config shipworld.yaml
+          --input release-bin/${{ matrix.artifact }}
+          --output ${{ matrix.artifact }}.AppImage
           --arch ${{ matrix.arch }}
-        working-directory: packages/tools
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v7
         with:
@@ -332,8 +346,8 @@ jobs:
         run: dart pub get
 
       - name: Verify tag matches package version
-        run: dart run bin/cli.dart verify release-tag
-        working-directory: packages/tools
+        run: dart run shipworld:shipworld release verify
+          proxer --config shipworld.yaml
 
       - name: Create GitHub Release
         env:
@@ -361,10 +375,13 @@ jobs:
           done < <(find release-assets -type f | sort)
 
       - name: Generate Homebrew Formula
-        run: dart run bin/cli.dart homebrew generate --version
-          "${GITHUB_REF_NAME}" --artifacts-dir "${{ github.workspace
-          }}/release-assets"
-        working-directory: packages/tools
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          dart run shipworld:shipworld package homebrew formula \
+            proxer --config shipworld.yaml \
+            --artifacts-dir "${{ github.workspace }}/release-assets" \
+            --output "release-assets/proxer.rb" \
+            --versioned-output "release-assets/proxer@${version}.rb"
 
       - name: Checkout Homebrew Tap
         uses: actions/checkout@v5
