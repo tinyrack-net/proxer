@@ -1,6 +1,6 @@
 name: proxer
 description: Self-hosted reverse-tunnel CLI for HTTP, SSE, and WebSocket services.
-version: 0.14.0
+version: 0.14.1
 publish_to: none
 environment:
   sdk: ^3.12.0
