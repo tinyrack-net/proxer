@@ -68,10 +68,7 @@ void main() {
   });
 
   test('rejects a host outside the configured domain', () {
-    expect(
-      parseTunnelRouteFromHost('other.com', 'proxy.localhost'),
-      isNull,
-    );
+    expect(parseTunnelRouteFromHost('other.com', 'proxy.localhost'), isNull);
   });
 
   test('rejects an empty subdomain prefix', () {
@@ -88,10 +85,13 @@ void main() {
     );
   });
 
-  test('treats an empty domain string as a literal match target, not "unset"', () {
-    expect(parseTunnelRouteFromHost('anything', ''), isNull);
-    expect(parseTunnelRouteFromHost('proxy.localhost', ''), isNull);
-  });
+  test(
+    'treats an empty domain string as a literal match target, not "unset"',
+    () {
+      expect(parseTunnelRouteFromHost('anything', ''), isNull);
+      expect(parseTunnelRouteFromHost('proxy.localhost', ''), isNull);
+    },
+  );
 
   test(
     'does not validate subdomain label charset — arbitrary characters pass through',

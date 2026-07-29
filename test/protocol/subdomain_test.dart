@@ -32,29 +32,26 @@ void main() {
     expect(parseHttpSubdomain('DEMO'), 'demo');
   });
 
-  test(
-    'throws ProxerError with the shared rule message for invalid input',
-    () {
-      for (final value in <String>[
-        '',
-        '-demo',
-        'demo-',
-        'de_mo',
-        'de.mo',
-        'a' * 64,
-      ]) {
-        expect(
-          () => parseHttpSubdomain(value),
-          throwsA(
-            isA<ProxerError>().having(
-              (e) => e.message,
-              'message',
-              subdomainRuleMessage,
-            ),
+  test('throws ProxerError with the shared rule message for invalid input', () {
+    for (final value in <String>[
+      '',
+      '-demo',
+      'demo-',
+      'de_mo',
+      'de.mo',
+      'a' * 64,
+    ]) {
+      expect(
+        () => parseHttpSubdomain(value),
+        throwsA(
+          isA<ProxerError>().having(
+            (e) => e.message,
+            'message',
+            subdomainRuleMessage,
           ),
-          reason: 'value="$value"',
-        );
-      }
-    },
-  );
+        ),
+        reason: 'value="$value"',
+      );
+    }
+  });
 }
