@@ -90,6 +90,19 @@ void main() {
     http.close(force: true);
   });
 
+  test(
+    'returns a not-found response for a host with no matching tunnel',
+    () async {
+      final http = HttpClient();
+      final request = await http.getUrl(Uri.parse(proxer.publicUrl));
+      request.headers.host = 'unknown.proxy.localhost';
+      final response = await request.close();
+      expect(response.statusCode, HttpStatus.notFound);
+      await response.drain<void>();
+      http.close(force: true);
+    },
+  );
+
   test('streams SSE chunks through the tunnel', () async {
     final http = HttpClient();
     final request = await http.getUrl(Uri.parse('${proxer.publicUrl}/events'));
