@@ -9,10 +9,27 @@ executables:
   proxer: proxer
 
 dependencies:
-  cliweave: ^0.2.1
+  cliweave:
+    git:
+      url: https://github.com/tinyrack-net/dart-packages
+      ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
+      path: packages/cliweave
   path: ^1.9.0
 
 dev_dependencies:
   lints: ^6.0.0
-  shipworld: ^0.1.2
+  shipworld:
+    git:
+      url: https://github.com/tinyrack-net/dart-packages
+      ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
+      path: packages/shipworld
   test: ^1.26.0
+
+# shipworld declares cliweave as a hosted dependency, which conflicts with the
+# git source above; the override pins both to the same commit.
+dependency_overrides:
+  cliweave:
+    git:
+      url: https://github.com/tinyrack-net/dart-packages
+      ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
+      path: packages/cliweave

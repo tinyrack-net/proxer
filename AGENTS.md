@@ -6,6 +6,7 @@
 
 - **Main Technologies:** Dart (>=3.12), cliweave, shipworld, package:test.
 - **Architecture:** A single-package Dart CLI rooted at the repository (`bin`, `lib`, `test`, `tool`). Release and packaging are driven by `shipworld` via `shipworld.yaml`. The standalone React Router homepage lives in `homepage`.
+- **Dependencies:** `cliweave` and `shipworld` come from a pinned commit of `tinyrack-net/dart-packages`, not pub.dev. Both must stay on the same SHA, and bumping it means editing three places in `pubspec.yaml`: `dependencies`, `dev_dependencies`, and the `dependency_overrides` entry that keeps `cliweave` on the git source.
 
 ## Mandatory Validation Loop
 
