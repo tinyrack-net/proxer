@@ -12,18 +12,18 @@ dependencies:
   cliweave:
     git:
       url: https://github.com/tinyrack-net/dart-packages
-      ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
+      ref: 7e1b0065513936e801109f87af21b4afd9ea05ab
       path: packages/cliweave
-  path: ^1.9.0
+  path: ^1.9.1
 
 dev_dependencies:
-  lints: ^6.0.0
+  lints: ^6.1.0
   shipworld:
     git:
       url: https://github.com/tinyrack-net/dart-packages
-      ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
+      ref: 7e1b0065513936e801109f87af21b4afd9ea05ab
       path: packages/shipworld
-  test: ^1.26.0
+  test: ^1.31.2
 
 # shipworld declares cliweave as a hosted dependency, which conflicts with the
 # git source above; the override pins both to the same commit.
@@ -31,5 +31,5 @@ dependency_overrides:
   cliweave:
     git:
       url: https://github.com/tinyrack-net/dart-packages
-      ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
+      ref: 7e1b0065513936e801109f87af21b4afd9ea05ab
       path: packages/cliweave

@@ -61,11 +61,11 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/cliweave"
-      ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
-      resolved-ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
+      ref: "7e1b0065513936e801109f87af21b4afd9ea05ab"
+      resolved-ref: "7e1b0065513936e801109f87af21b4afd9ea05ab"
       url: "https://github.com/tinyrack-net/dart-packages"
     source: git
-    version: "0.2.2"
+    version: "0.2.3"
   collection:
     dependency: transitive
     description:
@@ -278,11 +278,11 @@ packages:
     dependency: "direct dev"
     description:
       path: "packages/shipworld"
-      ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
-      resolved-ref: f4c874d8316d326d8dc71b811bc62f084825a0c0
+      ref: "7e1b0065513936e801109f87af21b4afd9ea05ab"
+      resolved-ref: "7e1b0065513936e801109f87af21b4afd9ea05ab"
       url: "https://github.com/tinyrack-net/dart-packages"
     source: git
-    version: "0.2.3"
+    version: "0.2.5"
   source_map_stack_trace:
     dependency: transitive
     description:
