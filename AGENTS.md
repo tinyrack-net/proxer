@@ -22,6 +22,12 @@ Run the validation loop after changes:
 - `shipworld.yaml`: Release, signing, and packaging configuration (MSIX, AppImage, Homebrew, macOS signing).
 - `homepage`: React Router documentation site.
 
+## Merging
+
+- `main` is protected and takes no direct pushes, admins included. Every change lands through a pull request.
+- The one required check is `Quality Gate`, an aggregate job in `.github/workflows/pipeline.yml` that fails unless every quality job reports `success`. A job it needs that reports `skipped` fails the gate too, so anything added to `needs` has to run on both `pull_request` and `merge_group`.
+- `gh pr merge --auto --squash <number>` queues the merge. Once the checks pass, the merge queue re-runs the pipeline on the pull request rebased onto current `main`, then squash-merges and deletes the branch.
+
 ## Release
 
 - Version is single-sourced in `pubspec.yaml` and synchronized into `lib/src/util/version.g.dart` by shipworld.
