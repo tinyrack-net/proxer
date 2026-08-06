@@ -7,6 +7,7 @@ on:
     tags:
       - "v*.*.*"
   pull_request:
+  merge_group:
   workflow_dispatch:
 
 permissions:
@@ -21,8 +22,11 @@ env:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
+  # A cancelled merge-queue check reads as a failure and ejects the pull
+  # request from the queue, so those runs always finish.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' &&
-    !startsWith(github.ref, 'refs/tags/v') }}
+    !startsWith(github.ref, 'refs/tags/v') &&
+    github.event_name != 'merge_group' }}
 
 jobs:
   lint:
@@ -529,7 +533,8 @@ jobs:
     needs:
       - dart-analyze
       - dart-test
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' ||
+      github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -545,6 +550,28 @@ jobs:
           tags: proxer:ci
       - name: Smoke test Docker image
         run: docker run --rm proxer:ci --version
+
+  quality-gate:
+    name: Quality Gate
+    # The single required check for `main`. Branch protection and the merge
+    # queue both gate on this job, so it has to report on every pull request
+    # and every merge-queue run, including when a job it needs fails.
+    if: always() && (github.event_name == 'pull_request' ||
+      github.event_name == 'merge_group')
+    needs:
+      - lint
+      - dart-analyze
+      - dart-test
+      - homepage
+      - build-and-package
+      - docker-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every quality job to succeed
+        env:
+          QUALITY_RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$QUALITY_RESULTS"
 
   publish-docker:
     name: Publish Docker Image
