@@ -47,9 +47,7 @@ export function ProxerHome({
           <ul className="proxer-features">
             {features.map((feature) => (
               <li key={feature}>
-                <TRBadge uiSize="sm" variant="neutral">
-                  {feature}
-                </TRBadge>
+                <TRBadge variant="neutral">{feature}</TRBadge>
               </li>
             ))}
           </ul>
@@ -72,7 +70,6 @@ export function ProxerHome({
           <TRTabs.Root
             className="proxer-install"
             defaultValue={installTargets[0].value}
-            uiSize="sm"
           >
             <TRTabs.List aria-label={installLabel}>
               {installTargets.map((target) => (
