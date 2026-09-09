@@ -72,14 +72,13 @@ final FlagBinding<String?, ApplicationContext> serverDomainFlag =
 
 String _lowercase(String input) => input.toLowerCase();
 
-final FlagBinding<String?, ApplicationContext>
-httpSubdomainFlag = ParsedFlag.optional<String, ApplicationContext>(
-  name: 'subdomain',
-  brief:
-      'Subdomain for host routing; omit for random, or use @ for root when the server has --domain.',
-  parse: (context, input) => parseSubdomainFlag(input),
-  placeholder: 'subdomain',
-);
+final FlagBinding<String?, ApplicationContext> httpSubdomainFlag =
+    ParsedFlag.optional<String, ApplicationContext>(
+      name: 'subdomain',
+      brief: 'Subdomain for host routing; omit for random, or use @ for root when the server has --domain.',
+      parse: (context, input) => parseSubdomainFlag(input),
+      placeholder: 'subdomain',
+    );
 
 final FlagBinding<String?, ApplicationContext> basicAuthPasswordFlag =
     ParsedFlag.optional<String, ApplicationContext>(

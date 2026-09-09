@@ -34,9 +34,9 @@ void main() {
   });
 
   test('keeps the TypeScript wire protocol byte-exact', () {
-    final lines = File(
-      'test/goldens/protocol_frames.jsonl',
-    ).readAsLinesSync().where((line) => line.isNotEmpty);
+    final lines = File('test/goldens/protocol_frames.jsonl')
+        .readAsLinesSync()
+        .where((line) => line.isNotEmpty);
 
     for (final line in lines) {
       expect(encodeFrame(decodeFrame(line)), line);

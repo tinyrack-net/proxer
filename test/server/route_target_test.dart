@@ -39,14 +39,11 @@ void main() {
     },
   );
 
-  test(
-    'falls back to the first label when domain is unset even for multi-label hosts',
-    () {
-      final route = parseTunnelRouteFromHost('demo.proxy.localhost', null);
-      expect(route, isA<SubdomainTunnelRoute>());
-      expect((route as SubdomainTunnelRoute).subdomain, 'demo');
-    },
-  );
+  test('falls back to the first label when domain is unset even for multi-label hosts', () {
+    final route = parseTunnelRouteFromHost('demo.proxy.localhost', null);
+    expect(route, isA<SubdomainTunnelRoute>());
+    expect((route as SubdomainTunnelRoute).subdomain, 'demo');
+  });
 
   test('treats an exact domain match as the root route', () {
     final route = parseTunnelRouteFromHost(
@@ -93,15 +90,12 @@ void main() {
     },
   );
 
-  test(
-    'does not validate subdomain label charset — arbitrary characters pass through',
-    () {
-      final route = parseTunnelRouteFromHost(
-        'de_mo.proxy.localhost',
-        'proxy.localhost',
-      );
-      expect(route, isA<SubdomainTunnelRoute>());
-      expect((route as SubdomainTunnelRoute).subdomain, 'de_mo');
-    },
-  );
+  test('does not validate subdomain label charset — arbitrary characters pass through', () {
+    final route = parseTunnelRouteFromHost(
+      'de_mo.proxy.localhost',
+      'proxy.localhost',
+    );
+    expect(route, isA<SubdomainTunnelRoute>());
+    expect((route as SubdomainTunnelRoute).subdomain, 'de_mo');
+  });
 }

@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: 3.12.2
+          sdk: 3.13.2
       - uses: actions/cache@v6
         with:
           path: ~/.pub-cache
@@ -71,7 +71,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: 3.12.2
+          sdk: 3.13.2
       - uses: actions/cache@v6
         with:
           path: ~/.pub-cache
@@ -136,7 +136,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: 3.12.2
+          sdk: 3.13.2
       - uses: actions/cache@v6
         with:
           path: ~/.pub-cache
@@ -228,7 +228,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: 3.12.2
+          sdk: 3.13.2
       - uses: actions/cache@v6
         with:
           path: ~/.pub-cache
@@ -285,7 +285,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: 3.12.2
+          sdk: 3.13.2
       - uses: actions/cache@v6
         with:
           path: ~/.pub-cache
@@ -341,7 +341,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dart-lang/setup-dart@v1
         with:
-          sdk: 3.12.2
+          sdk: 3.13.2
       - uses: actions/cache@v6
         with:
           path: ~/.pub-cache
@@ -453,7 +453,7 @@ jobs:
           path: store-assets
 
       - name: Set up Microsoft Store CLI
-        uses: microsoft/microsoft-store-apppublisher@v1.1
+        uses: microsoft/microsoft-store-apppublisher@v1.4
 
       - name: Configure Microsoft Store CLI
         shell: powershell
