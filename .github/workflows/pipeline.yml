@@ -453,7 +453,7 @@ jobs:
           path: store-assets
 
       - name: Set up Microsoft Store CLI
-        uses: microsoft/microsoft-store-apppublisher@v1.1
+        uses: microsoft/microsoft-store-apppublisher@v1.4
 
       - name: Configure Microsoft Store CLI
         shell: powershell
