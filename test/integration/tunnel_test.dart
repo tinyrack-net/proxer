@@ -115,9 +115,8 @@ void main() {
   });
 
   test('passes a raw WebSocket upgrade in both directions', () async {
-    final uri = Uri.parse(
-      proxer.publicUrl,
-    ).replace(scheme: 'ws', path: '/echo');
+    final uri = Uri.parse(proxer.publicUrl)
+        .replace(scheme: 'ws', path: '/echo');
     final socket = await WebSocket.connect(
       uri.toString(),
       headers: {'Host': 'demo.proxy.localhost'},

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM dart:3.12.2-sdk AS build
+FROM dart:3.13.2-sdk AS build
 
 WORKDIR /workspace
 

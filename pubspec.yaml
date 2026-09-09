@@ -3,7 +3,7 @@ description: Self-hosted reverse-tunnel CLI for HTTP, SSE, and WebSocket service
 version: 0.14.2
 publish_to: none
 environment:
-  sdk: ^3.12.0
+  sdk: ^3.13.0
 
 executables:
   proxer: proxer
