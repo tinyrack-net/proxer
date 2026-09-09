@@ -8,6 +8,7 @@ import 'package:proxer/src/services/server/basic_auth.dart';
 import 'package:proxer/src/services/server/request_context.dart';
 import 'package:proxer/src/services/server/route_target.dart';
 import 'package:proxer/src/services/server/stream_registry.dart';
+import 'package:proxer/src/services/server/telemetry.dart';
 import 'package:proxer/src/services/server/trusted_proxies.dart';
 import 'package:proxer/src/util/headers.dart';
 
@@ -83,13 +84,16 @@ Future<void> handlePublicRequest({
     );
     return;
   }
-  await _proxyHttp(
-    request: request,
-    tunnel: tunnel,
-    context: context,
-    streamTimeoutMs: streamTimeoutMs,
-    stripAuthorization: tunnel.basicAuth != null,
-    log: log,
+  await traceTunnelHttpRequest(
+    request,
+    () => _proxyHttp(
+      request: request,
+      tunnel: tunnel,
+      context: context,
+      streamTimeoutMs: streamTimeoutMs,
+      stripAuthorization: tunnel.basicAuth != null,
+      log: log,
+    ),
   );
 }
 
@@ -109,6 +113,7 @@ Future<void> _proxyHttp({
   late final StreamSubscription<Object?> closed;
   Timer? timer;
   var frameQueue = Future<void>.value();
+  final completed = Completer<void>();
 
   Future<void> cleanup() async {
     if (finished) {
@@ -118,6 +123,7 @@ Future<void> _proxyHttp({
     timer?.cancel();
     await frames.cancel();
     await closed.cancel();
+    if (!completed.isCompleted) completed.complete();
   }
 
   Future<void> handleFrame(TunnelFrame frame) async {
@@ -196,6 +202,7 @@ Future<void> _proxyHttp({
   if (stripAuthorization) {
     headers.remove(HttpHeaders.authorizationHeader);
   }
+  injectCurrentTraceContext(headers);
   await tunnel.connection.send(
     OpenFrame(
       streamId: streamId,
@@ -228,6 +235,7 @@ Future<void> _proxyHttp({
     await cleanup();
   }
   log?.call('${request.method} ${request.uri.path} opened');
+  await completed.future;
 }
 
 bool _frameMatches(TunnelFrame frame, String expected) {

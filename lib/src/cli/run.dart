@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:proxer/src/services/http_client.dart';
 import 'package:proxer/src/services/server.dart';
+import 'package:proxer/src/services/server/telemetry.dart';
 import 'package:proxer/src/util/logging.dart';
 
 Future<void> waitForShutdownSignal() async {
@@ -32,25 +33,30 @@ Future<void> runServer(
   required void Function(String message) info,
   required void Function(String message) error,
 }) async {
-  final running = await startServer(
-    ServerConfig(
-      listenAddress: config.listenAddress,
-      domain: config.domain,
-      token: config.token,
-      trustedProxies: config.trustedProxies,
-      log: info,
-    ),
-  );
+  await initializeServerTelemetry();
   try {
-    info('public: ${running.publicUrl}');
-    info('control: ${running.controlUrl}');
-    if (config.token == null) {
-      info('token: ${running.token}');
+    final running = await startServer(
+      ServerConfig(
+        listenAddress: config.listenAddress,
+        domain: config.domain,
+        token: config.token,
+        trustedProxies: config.trustedProxies,
+        log: info,
+      ),
+    );
+    try {
+      info('public: ${running.publicUrl}');
+      info('control: ${running.controlUrl}');
+      if (config.token == null) {
+        info('token: ${running.token}');
+      }
+      await waitForShutdownSignal();
+    } finally {
+      await running.close();
+      info('server stopped');
     }
-    await waitForShutdownSignal();
   } finally {
-    await running.close();
-    info('server stopped');
+    await shutdownServerTelemetry();
   }
 }
 

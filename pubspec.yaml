@@ -14,6 +14,7 @@ dependencies:
       url: https://github.com/tinyrack-net/dart-packages
       ref: 7e1b0065513936e801109f87af21b4afd9ea05ab
       path: packages/cliweave
+  dartastic_opentelemetry: ^0.11.0
   path: ^1.9.1
 
 dev_dependencies:
